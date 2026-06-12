@@ -5,6 +5,20 @@ spring:
   application:
     name: elo-arena-matchmaker
 
+  # Connection settings come from the environment so the same image runs locally
+  # and in Docker Compose. The defaults point at localhost for running outside compose.
+  # Integration tests override these via Testcontainers @ServiceConnection, so the
+  # defaults here never affect tests.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/eloarena}
+    username: ${SPRING_DATASOURCE_USERNAME:eloarena}
+    password: ${SPRING_DATASOURCE_PASSWORD:eloarena}
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
   jpa:
     # Flyway owns the schema. Hibernate must never create or alter tables.
     # 'validate' makes startup fail fast if an entity stops matching its Flyway table,

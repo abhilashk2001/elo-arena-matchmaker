@@ -1,0 +1,53 @@
+# Local stack for Elo Arena Matchmaker.
+# Postgres is the source of truth, Redis is the live read model, app is the API + matcher.
+# The matcher-only service and the dashboard are added in later phases.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eloarena
+      POSTGRES_USER: eloarena
+      POSTGRES_PASSWORD: eloarena
+    ports:
+      # Host port 5433 to avoid clashing with a local Postgres on 5432.
+      # The app inside compose still connects on the internal network at postgres:5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready reports when Postgres is actually accepting connections,
+      # not merely that the container process has started.
+      test: ["CMD-SHELL", "pg_isready -U eloarena -d eloarena"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      # Wait until Postgres and Redis pass their healthchecks before starting the app.
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eloarena
+      SPRING_DATASOURCE_USERNAME: eloarena
+      SPRING_DATASOURCE_PASSWORD: eloarena
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
