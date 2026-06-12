@@ -49,3 +49,16 @@ eloarena:
   # The active role of this instance. 'all' runs the API and the matcher together.
   # The matcher-only and api-only profiles override this.
   role: all
+
+  matcher:
+    # Whether this instance runs the scheduled matcher loop. On for default and
+    # matcher-only; the api-only profile turns it off.
+    loop-enabled: true
+    # How often the matcher loop runs, in milliseconds.
+    interval-ms: 1000
+    # Band expansion: a waiting player's acceptable rating half-width starts at 'base'
+    # and grows by 'expansion-per-second' each second, capped at 'max'.
+    band:
+      base: 50
+      expansion-per-second: 5
+      max: 400

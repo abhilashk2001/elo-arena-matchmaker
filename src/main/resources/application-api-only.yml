@@ -4,3 +4,7 @@
 # The matcher loop is gated with @Profile in later phases; this file marks the role.
 eloarena:
   role: api
+  matcher:
+    # api-only serves the API without running the embedded matcher loop, so the number
+    # of active matchers can be controlled explicitly during demos and benchmarks.
+    loop-enabled: false
