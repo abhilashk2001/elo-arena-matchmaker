@@ -78,6 +78,21 @@ class RaceConditionTest extends IntegrationTest {
         }
 
         long maxCorrectMatches = PLAYER_COUNT / 2;
+        Long doubleMatchedPlayers = jdbc.queryForObject("""
+                SELECT count(*) FROM (
+                    SELECT player_id FROM (
+                        SELECT player_a_id AS player_id FROM matches
+                        UNION ALL
+                        SELECT player_b_id AS player_id FROM matches
+                    ) p GROUP BY player_id HAVING count(*) > 1
+                ) doubled
+                """, Long.class);
+
+        System.out.printf(
+                "RACE_REPRODUCTION players=%d maxCorrectMatches=%d actualMatches=%d "
+                        + "doubleMatchedPlayers=%d anomaliesDetected=%d%n",
+                PLAYER_COUNT, maxCorrectMatches, matches.count(), doubleMatchedPlayers, anomalies.count());
+
         assertThat(matches.count())
                 .as("two unlocked matchers should create more matches than the %d possible", maxCorrectMatches)
                 .isGreaterThan(maxCorrectMatches);
