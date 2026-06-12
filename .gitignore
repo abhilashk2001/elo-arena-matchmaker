@@ -1,0 +1,18 @@
+# Build outputs
+target/
+build/
+*.jar
+*.class
+# Node / dashboard
+node_modules/
+dist/
+.vite/
+# IDE
+.idea/
+*.iml
+.vscode/
+# OS
+.DS_Store
+# Env
+.env
+.env.local
