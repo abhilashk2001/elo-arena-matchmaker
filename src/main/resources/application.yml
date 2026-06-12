@@ -1,0 +1,51 @@
+# Base configuration shared by every profile.
+# Datasource and Redis connection settings are added in story #11 (Docker Compose),
+# where they come from environment variables so the same image runs locally and in compose.
+spring:
+  application:
+    name: elo-arena-matchmaker
+
+  # Connection settings come from the environment so the same image runs locally
+  # and in Docker Compose. The defaults point at localhost for running outside compose.
+  # Integration tests override these via Testcontainers @ServiceConnection, so the
+  # defaults here never affect tests.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/eloarena}
+    username: ${SPRING_DATASOURCE_USERNAME:eloarena}
+    password: ${SPRING_DATASOURCE_PASSWORD:eloarena}
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  jpa:
+    # Flyway owns the schema. Hibernate must never create or alter tables.
+    # 'validate' makes startup fail fast if an entity stops matching its Flyway table,
+    # which catches drift between the migrations and the JPA mappings.
+    hibernate:
+      ddl-auto: validate
+    # Keep the persistence context out of the view layer. Avoids lazy-loading
+    # surprises and holding a DB connection for the whole request.
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+# Actuator: expose the operational endpoints the dashboard and benchmarks read later.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Application-specific settings live under this namespace.
+# Individual keys are introduced by the stories that use them
+# (matcher strategy in Phase 4, band expansion in Phase 2, and so on).
+eloarena:
+  # The active role of this instance. 'all' runs the API and the matcher together.
+  # The matcher-only and api-only profiles override this.
+  role: all
