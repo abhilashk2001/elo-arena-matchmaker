@@ -146,3 +146,45 @@ Answer these before moving to Phase 3.
 1. Walk through the naive matcher running on two instances against the same queue. Step by step, where exactly does it break, and what bad outcome results?
 2. What does the conditional UPDATE on leave protect against, and what would go wrong with a plain read-then-write?
 3. Why does the naive matcher write each pair in its own transaction rather than all pairs in one? Give one benefit.
+
+---
+
+## Phase 3: Break it on purpose
+
+### Reproducing a race deterministically
+
+Race conditions are timing-dependent, so they often do not appear when you go looking, which
+is why "it did not fail on my machine" means nothing. To make the double-match reliable we use
+a CyclicBarrier as a synchronized starting gate: both matcher threads do their setup, wait at
+the gate, and are released at the same instant, like a sprint start. This maximises the chance
+they read the same WAITING snapshot and collide, turning a flaky one-in-many bug into one that
+reproduces on essentially every run. With 100 mutually-compatible players and two matchers, the
+result is stable: 100 matches instead of 50, every player double-matched, around 103 anomalies.
+
+### Detection versus enforcement
+
+The anomaly detector is allowed to be slightly racy, but the matcher is not. They have different
+jobs. The matcher enforces a hard guarantee (never double-match) and must be exact. The detector
+only measures (count the double-matches that happened) and just needs to be good enough to tell
+the story: the counter climbs in naive mode and sits at zero in locking mode. A detector that
+occasionally miscounts by one still makes the bug and the fix obvious. A smoke detector that is
+off by a degree still tells you the house is on fire. So we accept that the detector reads then
+writes (itself a small race) because being approximately right is fine for measurement.
+
+### READ COMMITTED and when a concurrent write becomes visible
+
+The detector runs after a match commits, in its own read. Under Postgres' default READ COMMITTED
+isolation, a transaction only sees rows other transactions have committed. So a matcher that
+checks for a conflict inside its own still-open transaction would not see the other matcher's
+uncommitted match. Running detection after commit lets it see the committed conflict, which is
+why the second matcher to commit is the one that records the anomaly.
+
+---
+
+## Checkpoint questions: Phase 3
+
+Answer these before moving to Phase 4.
+
+1. Why do we use a CyclicBarrier in the race test instead of just starting two threads and hoping they collide?
+2. Could the anomaly detector itself miss (or double-count) anomalies? Why is that acceptable for a detector but would not be acceptable for the matcher?
+3. Under READ COMMITTED, why does running detection after the match commits catch the double-match, while checking inside the creating transaction would not?

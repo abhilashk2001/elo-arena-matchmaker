@@ -58,3 +58,34 @@ stand instead of the whole tick rolling back. It also keeps the lock footprint p
 (Phase 4's locking strategy deliberately chooses the opposite, one transaction per claimed batch,
 because by then the batch rows are already exclusively locked, so a single transaction is both safe
 and simpler.)
+
+---
+
+## Phase 3: Break it on purpose
+
+**Q1. Why a CyclicBarrier instead of just starting two threads?**
+
+Because race conditions are timing-dependent. If you just start two threads, one usually
+finishes most of its work before the other reads, so they do not collide and the bug stays
+hidden ("did not fail on my machine"). A CyclicBarrier makes both threads wait at a gate and
+releases them at the same instant, so they read the same WAITING snapshot at nearly the same
+time. That maximises the collision window and makes the double-match reproduce on essentially
+every run, which is what you need for a regression test.
+
+**Q2. Could the detector miss or double-count anomalies? Why is that acceptable for the detector but not the matcher?**
+
+Yes. The detector reads then writes (it queries in-progress matches, then records a row), which
+is itself a small race, so under unlucky timing it could miscount by one. That is acceptable
+because the detector only measures: it needs to show the counter climbing in naive mode and
+sitting at zero in locking mode, and being approximately right does that. The matcher, by
+contrast, enforces a hard guarantee (never double-match a player). Enforcement must be exact;
+measurement only has to be good enough to tell the story.
+
+**Q3. Under READ COMMITTED, why does detecting after commit work, while checking inside the creating transaction would not?**
+
+READ COMMITTED means a transaction only sees rows other transactions have already committed.
+If a matcher checked for a conflict while its own transaction (and the other matcher's) were
+still open, it would not see the other matcher's uncommitted match, so it would find no
+conflict. Running detection after the match commits, in a fresh read, lets it see the other
+matcher's now-committed match. That is why the second matcher to commit is the one that records
+the anomaly.

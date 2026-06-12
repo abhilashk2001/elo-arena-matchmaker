@@ -22,15 +22,18 @@ public class NaiveMatcher implements MatchingStrategy {
     private final PairingAlgorithm pairingAlgorithm;
     private final MatchWriter matchWriter;
     private final SeasonService seasons;
+    private final AnomalyDetector anomalyDetector;
 
     public NaiveMatcher(QueueEntryRepository queue,
                         PairingAlgorithm pairingAlgorithm,
                         MatchWriter matchWriter,
-                        SeasonService seasons) {
+                        SeasonService seasons,
+                        AnomalyDetector anomalyDetector) {
         this.queue = queue;
         this.pairingAlgorithm = pairingAlgorithm;
         this.matchWriter = matchWriter;
         this.seasons = seasons;
+        this.anomalyDetector = anomalyDetector;
     }
 
     @Override
@@ -54,7 +57,9 @@ public class NaiveMatcher implements MatchingStrategy {
 
         long seasonId = seasons.currentSeasonId();
         for (Pairing pairing : pairings) {
-            matchWriter.createMatch(seasonId, pairing, now);
+            long matchId = matchWriter.createMatch(seasonId, pairing, now);
+            // Detection runs after the match commits so it can see other matchers' matches.
+            anomalyDetector.check(matchId, pairing.a().playerId(), pairing.b().playerId());
         }
         return pairings.size();
     }
