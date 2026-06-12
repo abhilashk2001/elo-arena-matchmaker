@@ -49,3 +49,11 @@ eloarena:
   # The active role of this instance. 'all' runs the API and the matcher together.
   # The matcher-only and api-only profiles override this.
   role: all
+
+  matcher:
+    # Band expansion: a waiting player's acceptable rating half-width starts at 'base'
+    # and grows by 'expansion-per-second' each second, capped at 'max'.
+    band:
+      base: 50
+      expansion-per-second: 5
+      max: 400
