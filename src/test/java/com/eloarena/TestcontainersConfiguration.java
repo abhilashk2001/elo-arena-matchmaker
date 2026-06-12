@@ -8,7 +8,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
 	// Pin image versions to match production (Postgres 16, Redis 7). Never use :latest:
 	// tests must run against a known, reproducible engine, especially because locking
