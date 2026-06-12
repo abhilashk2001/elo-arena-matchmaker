@@ -1,0 +1,6 @@
+# Profile: api-only
+# Serves the API without running the embedded matcher loop, so the number of active
+# matchers can be controlled explicitly during demos and benchmarks.
+# The matcher loop is gated with @Profile in later phases; this file marks the role.
+eloarena:
+  role: api

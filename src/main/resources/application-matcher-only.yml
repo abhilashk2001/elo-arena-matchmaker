@@ -1,0 +1,7 @@
+# Profile: matcher-only
+# Runs only the matcher loop. Used to launch extra matcher instances in Docker Compose
+# (docker compose up --scale matcher=3) for the multi-matcher concurrency demo.
+# The matcher loop and API beans are gated with @Profile in later phases; this file
+# marks the role and is where matcher-instance overrides will go.
+eloarena:
+  role: matcher
