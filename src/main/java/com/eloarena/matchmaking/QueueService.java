@@ -42,4 +42,17 @@ public class QueueService {
             throw new AlreadyQueuedException(playerId);
         }
     }
+
+    /**
+     * Remove a player's WAITING entry. Uses a conditional update so a concurrent match by
+     * the matcher is never clobbered: if there is no WAITING row to cancel, we report 404
+     * rather than touching a MATCHED entry.
+     */
+    @Transactional
+    public void leave(long playerId) {
+        int cancelled = queue.cancelWaiting(playerId);
+        if (cancelled == 0) {
+            throw new NotQueuedException(playerId);
+        }
+    }
 }
