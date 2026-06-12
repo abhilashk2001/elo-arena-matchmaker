@@ -3,6 +3,7 @@ package com.eloarena;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 
 /**
  * Base class for integration tests. Boots the full application context against real
@@ -19,5 +20,8 @@ import org.springframework.context.annotation.Import;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
+// The scheduled matcher loop is off by default in tests so it cannot run in the background
+// and match queued players mid-test. Tests that want the loop re-enable it explicitly.
+@TestPropertySource(properties = "eloarena.matcher.loop-enabled=false")
 public abstract class IntegrationTest {
 }
