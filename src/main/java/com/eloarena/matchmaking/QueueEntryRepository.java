@@ -5,7 +5,26 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
+
+    /** All waiting entries, longest waiter first. Used by the naive matcher's plain read. */
+    List<QueueEntry> findByStatusOrderByEnqueuedAtAsc(QueueStatus status);
+
+    /**
+     * Mark a queue entry MATCHED and link it to its match. The naive matcher updates by id
+     * without a status guard, on purpose: under concurrency two matchers can both reach
+     * this for the same entry, which is part of the race Phase 3 demonstrates.
+     */
+    @Modifying
+    @Query("""
+            UPDATE QueueEntry q
+               SET q.status = com.eloarena.matchmaking.QueueStatus.MATCHED,
+                   q.matchedMatchId = :matchId
+             WHERE q.id = :entryId
+            """)
+    int markMatched(@Param("entryId") long entryId, @Param("matchId") long matchId);
 
     /**
      * Cancel a player's WAITING entry in a single conditional update.
