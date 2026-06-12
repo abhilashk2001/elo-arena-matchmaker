@@ -1,10 +1,8 @@
 package com.eloarena.player;
 
-import com.eloarena.TestcontainersConfiguration;
+import com.eloarena.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 
 import java.util.Optional;
 
@@ -15,9 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Reaching the database is the point: the entity mapping is validated against the
  * Flyway schema at startup, and the round trip proves persistence works.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class PlayerRepositoryTest {
+class PlayerRepositoryTest extends IntegrationTest {
 
     @Autowired
     private PlayerRepository players;

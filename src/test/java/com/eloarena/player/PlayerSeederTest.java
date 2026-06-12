@@ -1,20 +1,16 @@
 package com.eloarena.player;
 
-import com.eloarena.TestcontainersConfiguration;
+import com.eloarena.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class PlayerSeederTest {
+class PlayerSeederTest extends IntegrationTest {
 
     @Autowired
     private PlayerSeeder seeder;
@@ -54,6 +50,22 @@ class PlayerSeederTest {
         List<String> secondRun = sortedHandles();
 
         assertThat(secondRun).isEqualTo(firstRun);
+    }
+
+    @Test
+    void ratingDistributionIsCenteredNear1200() {
+        seeder.seed(5_000, 99L);
+
+        List<Player> all = players.findAll();
+        double mean = all.stream().mapToInt(Player::getRating).average().orElseThrow();
+        int min = all.stream().mapToInt(Player::getRating).min().orElseThrow();
+        int max = all.stream().mapToInt(Player::getRating).max().orElseThrow();
+
+        // Tolerant check: a normal sample around 1200 should land close to 1200.
+        assertThat(mean).isBetween(1170.0, 1230.0);
+        // Clamping must hold the tails inside [400, 3000].
+        assertThat(min).isGreaterThanOrEqualTo(400);
+        assertThat(max).isLessThanOrEqualTo(3000);
     }
 
     private List<String> sortedHandles() {
