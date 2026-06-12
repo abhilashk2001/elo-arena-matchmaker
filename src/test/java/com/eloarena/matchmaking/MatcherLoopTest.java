@@ -40,7 +40,7 @@ class MatcherLoopTest extends IntegrationTest {
     @BeforeEach
     void clean() {
         jdbc.execute("TRUNCATE TABLE matches, queue_entries, rating_history, "
-                + "season_leaderboard_snapshots, players, seasons RESTART IDENTITY CASCADE");
+                + "season_leaderboard_snapshots, players RESTART IDENTITY CASCADE");
     }
 
     @Test
