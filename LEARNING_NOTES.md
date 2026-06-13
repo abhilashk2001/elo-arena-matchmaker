@@ -255,3 +255,50 @@ Answer these before moving to Phase 5.
 1. What happens to claimed-but-unpaired rows when the locking matcher's transaction commits?
 2. Why can a compatible pair be split across two matchers' batches, and why is that acceptable?
 3. What would FOR UPDATE *without* SKIP LOCKED do to throughput when two matchers run at once?
+
+---
+
+## Phase 5: Results, Elo, and idempotency
+
+### Transaction boundaries
+
+Processing a result does several writes (two player ratings, two history rows, the match
+status) that must all happen or none. They run in one transaction, so a crash anywhere rolls
+the whole thing back and ratings can never disagree with match status. The match row is loaded
+FOR UPDATE at the start, so two submissions for the same match serialize: the second waits for
+the first to commit and then sees the match already COMPLETED.
+
+### Idempotency, in two layers
+
+Clients retry, so the same result can arrive twice. Layer 1 (application): if the match is
+already COMPLETED, return 200 with the existing result rather than an error, because the caller
+is usually an honest retry that just did not hear the first response. Layer 2 (database): the
+uq_rating_once_per_match constraint forbids a second rating row for the same player and match,
+so even if two duplicates raced past the status check, the database rejects the second. The app
+check handles the common case nicely; the constraint is the hard guarantee that survives a race.
+
+### Why 200-with-existing beats 409
+
+A 409 tells an honest retrying client "conflict, something is wrong," when in fact their result
+was applied and everything is fine. Returning 200 with the existing outcome means the same call
+always yields the same answer, which is exactly what idempotency promises and what makes clients
+safe to retry.
+
+### Post-commit side effects and the trust order
+
+The Redis leaderboard update is published as an event and handled only AFTER the transaction
+commits. If the transaction rolls back, the listener never runs, so Redis is never given a
+rating the truth store did not record. The residual window (commit succeeds, process dies before
+the ZADD) is accepted: Postgres is truth, Redis may briefly lag, and the rebuild op (Phase 6)
+repairs it. The industrial version of this is a transactional outbox; the post-commit hook plus
+rebuild is the right-sized choice here.
+
+---
+
+## Checkpoint questions: Phase 5
+
+Answer these before moving to Phase 6.
+
+1. Trace a crash between the player rating UPDATE and the match-status UPDATE. What state results, and why?
+2. Why return 200 with the existing result for a replayed submission instead of 409?
+3. Which fires first for a duplicate, the application status check or the uq_rating_once_per_match constraint, and why do we want both?

@@ -118,3 +118,34 @@ queue, since both order by enqueued_at) would wait for the first matcher to fini
 working on other rows. The matchers would serialise: two matchers would do roughly the work of
 one. SKIP LOCKED is what lets the second matcher skip the locked rows and claim the next batch,
 so they run in parallel and throughput scales.
+
+---
+
+## Phase 5: Results, Elo, and idempotency
+
+**Q1. Trace a crash between the player rating UPDATE and the match-status UPDATE.**
+
+Nothing partial survives. All the writes (both player ratings, both rating-history rows, the
+match status) are in one transaction, and none of them are committed until the method returns
+successfully. A crash in the middle means the transaction never commits, so Postgres rolls back
+every uncommitted change. The ratings revert and the match stays IN_PROGRESS, exactly as if the
+submission never happened. Redis is untouched too, because the leaderboard update only runs
+after commit. That is the point of the single transaction: ratings can never disagree with match
+status.
+
+**Q2. Why 200-with-existing instead of 409 for a replayed submission?**
+
+Because the caller is almost always an honest client retrying after it did not hear the first
+response. The result was applied; nothing is wrong. A 409 would tell them "conflict" and make
+them think it failed. Returning 200 with the same outcome means the same call always produces the
+same answer, which is what idempotency means and what makes the endpoint safe to retry.
+
+**Q3. Which fires first for a duplicate, the app check or the constraint, and why both?**
+
+In the normal case the application status check fires first: the match is already COMPLETED, so
+we return the existing result and never reach the inserts. The uq_rating_once_per_match constraint
+only fires if that check is bypassed, which can happen when two duplicates race and both read
+IN_PROGRESS before either commits. We want both because they cover different cases: the app check
+gives a friendly 200 for ordinary retries, and the constraint is the hard guarantee that a rating
+is applied at most once even under a race the app check cannot see. The FOR UPDATE lock on the
+match makes the race rare by serializing submissions, but the constraint is the backstop.

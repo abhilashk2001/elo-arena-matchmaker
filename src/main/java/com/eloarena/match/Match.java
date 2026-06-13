@@ -80,6 +80,13 @@ public class Match {
         this.status = MatchStatus.IN_PROGRESS;
     }
 
+    /** Mark this match completed with its winner. */
+    public void complete(long winnerId, Instant when) {
+        this.status = MatchStatus.COMPLETED;
+        this.winnerId = winnerId;
+        this.completedAt = when;
+    }
+
     public Long getId() {
         return id;
     }
