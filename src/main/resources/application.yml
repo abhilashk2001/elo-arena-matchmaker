@@ -56,6 +56,9 @@ eloarena:
     loop-enabled: true
     # How often the matcher loop runs, in milliseconds.
     interval-ms: 1000
+    # How many waiting rows a locking matcher claims per tick. Small enough that other
+    # matchers always have rows to claim, large enough to find good pairs within the batch.
+    batch-size: 100
     # Band expansion: a waiting player's acceptable rating half-width starts at 'base'
     # and grows by 'expansion-per-second' each second, capped at 'max'.
     band:
