@@ -4,6 +4,7 @@ import com.eloarena.leaderboard.Leaderboard;
 import com.eloarena.player.Player;
 import com.eloarena.player.PlayerNotFoundException;
 import com.eloarena.player.PlayerRepository;
+import com.eloarena.rating.Divisions;
 import com.eloarena.rating.RatingHistoryRepository;
 import com.eloarena.season.SeasonService;
 import org.springframework.data.domain.PageRequest;
@@ -23,15 +24,18 @@ public class PlayerController {
     private final RatingHistoryRepository history;
     private final Leaderboard leaderboard;
     private final SeasonService seasons;
+    private final Divisions divisions;
 
     public PlayerController(PlayerRepository players,
                             RatingHistoryRepository history,
                             Leaderboard leaderboard,
-                            SeasonService seasons) {
+                            SeasonService seasons,
+                            Divisions divisions) {
         this.players = players;
         this.history = history;
         this.leaderboard = leaderboard;
         this.seasons = seasons;
+        this.divisions = divisions;
     }
 
     @GetMapping("/{id}")
@@ -40,6 +44,7 @@ public class PlayerController {
         Long rank = leaderboard.rankOf(seasons.currentSeasonId(), id);
         return new PlayerProfileResponse(
                 player.getId(), player.getHandle(), player.getRating(),
+                divisions.divisionFor(player.getRating()),
                 player.getRegion(), player.getGamesPlayed(), rank);
     }
 
