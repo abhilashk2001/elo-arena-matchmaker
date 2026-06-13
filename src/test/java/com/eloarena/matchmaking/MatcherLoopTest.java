@@ -35,6 +35,9 @@ class MatcherLoopTest extends IntegrationTest {
     private MatchRepository matches;
 
     @Autowired
+    private RedisLiveStats liveStats;
+
+    @Autowired
     private JdbcTemplate jdbc;
 
     @BeforeEach
@@ -52,5 +55,8 @@ class MatcherLoopTest extends IntegrationTest {
 
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(matches.count()).isEqualTo(1));
+
+        // The loop also updates the Redis live counters each tick.
+        assertThat(liveStats.matchesCreated()).isGreaterThanOrEqualTo(1);
     }
 }

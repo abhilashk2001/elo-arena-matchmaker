@@ -20,15 +20,21 @@ public class MatcherLoop {
     private static final Logger log = LoggerFactory.getLogger(MatcherLoop.class);
 
     private final StrategySelector strategies;
+    private final RedisLiveStats liveStats;
+    private final QueueEntryRepository queue;
 
-    public MatcherLoop(StrategySelector strategies) {
+    public MatcherLoop(StrategySelector strategies, RedisLiveStats liveStats, QueueEntryRepository queue) {
         this.strategies = strategies;
+        this.liveStats = liveStats;
+        this.queue = queue;
     }
 
     @Scheduled(fixedDelayString = "${eloarena.matcher.interval-ms:1000}")
     public void tick() {
         try {
             int created = strategies.current().matchTick();
+            liveStats.recordMatchesCreated(created);
+            liveStats.setQueueDepth(queue.countByStatus(QueueStatus.WAITING));
             if (created > 0) {
                 log.info("Matcher created {} match(es) this tick", created);
             }
