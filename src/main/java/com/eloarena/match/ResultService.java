@@ -8,6 +8,9 @@ import com.eloarena.rating.EloCalculator;
 import com.eloarena.rating.EloCalculator.EloResult;
 import com.eloarena.rating.RatingHistory;
 import com.eloarena.rating.RatingHistoryRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,19 +29,31 @@ public class ResultService {
     private final PlayerRepository players;
     private final RatingHistoryRepository history;
     private final EloCalculator elo;
+    private final ApplicationEventPublisher events;
+    private final Timer processingTimer;
 
     public ResultService(MatchRepository matches,
                          PlayerRepository players,
                          RatingHistoryRepository history,
-                         EloCalculator elo) {
+                         EloCalculator elo,
+                         ApplicationEventPublisher events,
+                         MeterRegistry meterRegistry) {
         this.matches = matches;
         this.players = players;
         this.history = history;
         this.elo = elo;
+        this.events = events;
+        this.processingTimer = Timer.builder("eloarena.result.processing")
+                .description("Time to process a match result, the hot-row contention probe")
+                .register(meterRegistry);
     }
 
     @Transactional
     public MatchResultResponse submit(long matchId, long winnerId) {
+        return processingTimer.record(() -> process(matchId, winnerId));
+    }
+
+    private MatchResultResponse process(long matchId, long winnerId) {
         Match match = matches.findByIdForUpdate(matchId)
                 .orElseThrow(() -> new MatchNotFoundException(matchId));
 
@@ -68,6 +83,12 @@ public class ResultService {
         history.save(new RatingHistory(playerBId, matchId, match.getSeasonId(), beforeB, newRatings.newRatingB()));
 
         match.complete(winnerId, Instant.now());
+
+        // Update the Redis leaderboard only after this transaction commits.
+        events.publishEvent(new MatchCompletedEvent(
+                match.getSeasonId(),
+                playerAId, newRatings.newRatingA(),
+                playerBId, newRatings.newRatingB()));
 
         return buildResponse(match);
     }
