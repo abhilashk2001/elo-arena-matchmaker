@@ -149,3 +149,47 @@ IN_PROGRESS before either commits. We want both because they cover different cas
 gives a friendly 200 for ordinary retries, and the constraint is the hard guarantee that a rating
 is applied at most once even under a race the app check cannot see. The FOR UPDATE lock on the
 match makes the race rare by serializing submissions, but the constraint is the backstop.
+
+## Phase 6: Leaderboard and seasons
+
+**Q1. Why keep the leaderboard in Redis when Postgres already has every rating?**
+
+Because the read patterns the dashboard hammers are cheap in a sorted set and expensive in a
+relational table. Top-N from Postgres is an ORDER BY over the players plus a limit, and it gets
+slower as players grow; a single player's rank is worse, because you have to count how many
+players outrank them. A Redis sorted set keeps members ordered by score, so top-N is ZREVRANGE
+(O(log N + M)) and a player's rank is ZREVRANK (O(log N)), both fast at any size. The cost is that
+the same fact now lives in two places, so it can drift. We pay that down with discipline: Postgres
+is the truth, Redis is only ever written after a Postgres commit, and anything in Redis can be
+rebuilt from Postgres, so a stale or wiped Redis is a recoverable cache miss, not lost data.
+
+**Q2. Why is the division derived from rating rather than stored?**
+
+A division is a pure function of rating (ten 200-point bands), so storing it would create a second
+value that has to be updated in lockstep every time the rating changes. The moment those two
+disagree, through a missed update or a partial write, you have a bug and no obvious source of
+truth. Computing it on read means there is only one number, the rating, and the division is always
+exactly consistent with it by construction. It is the same single-source-of-truth instinct as the
+Redis projection, applied to a field cheap enough to recompute every time.
+
+**Q3. Why must the rollover's four writes share one transaction? Give a bad partial state.**
+
+Because the four writes (freeze standings, close the season, reset ratings, open the next season)
+only make sense as a unit, and a crash between them would leave the system inconsistent with no
+way to tell how far it got. Concrete bad state: suppose it closed the season but crashed before
+opening the next one. Now zero seasons have ended_at IS NULL, so there is no active season, and the
+matcher cannot stamp new matches with a season id; the whole system stalls. Another: it reset every
+rating but never wrote the snapshot, so the final standings of the season just ended are gone for
+good. Wrapping all four in one transaction makes it all-or-nothing: either the rollover happened or
+the world is exactly as it was before.
+
+**Q4. Why reset Redis in an afterCommit hook instead of inside the transaction?**
+
+Because Redis is not part of the database transaction and cannot be rolled back with it. If we
+dropped the old board and rebuilt the new one inside the transaction and the transaction then
+rolled back, Postgres would revert but Redis would be left advertising a rollover that never
+happened, with no event to undo it. Running the reset in an afterCommit hook means Redis is only
+ever touched once the database change is durable, so it can only reflect a rollover that actually
+succeeded. And if the process dies in the gap between commit and the reset, the rebuild op
+reconstructs the new season's board from Postgres, so the worst case is a brief lag, not a wrong
+board. Postgres leads, Redis follows.
