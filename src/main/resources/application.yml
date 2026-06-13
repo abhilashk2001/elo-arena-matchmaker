@@ -51,6 +51,9 @@ eloarena:
   role: all
 
   matcher:
+    # Active matching strategy at startup: locking (safe) or naive (the broken demo mode).
+    # Switchable at runtime via PUT /api/admin/matcher-strategy.
+    strategy: locking
     # Whether this instance runs the scheduled matcher loop. On for default and
     # matcher-only; the api-only profile turns it off.
     loop-enabled: true
