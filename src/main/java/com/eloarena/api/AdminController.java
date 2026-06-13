@@ -1,10 +1,14 @@
 package com.eloarena.api;
 
+import com.eloarena.matchmaking.StrategySelector;
 import com.eloarena.player.PlayerSeeder;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,9 +26,11 @@ import java.util.Map;
 public class AdminController {
 
     private final PlayerSeeder seeder;
+    private final StrategySelector strategies;
 
-    public AdminController(PlayerSeeder seeder) {
+    public AdminController(PlayerSeeder seeder, StrategySelector strategies) {
         this.seeder = seeder;
+        this.strategies = strategies;
     }
 
     @PostMapping("/seed")
@@ -33,5 +39,11 @@ public class AdminController {
             @RequestParam(defaultValue = "42") long seed) {
         int inserted = seeder.seed(count, seed);
         return Map.of("seeded", inserted, "seed", seed);
+    }
+
+    @PutMapping("/matcher-strategy")
+    public Map<String, Object> setStrategy(@Valid @RequestBody SetStrategyRequest request) {
+        strategies.select(request.strategy());
+        return Map.of("strategy", strategies.currentName(), "available", strategies.available());
     }
 }

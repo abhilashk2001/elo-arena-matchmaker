@@ -188,3 +188,70 @@ Answer these before moving to Phase 4.
 1. Why do we use a CyclicBarrier in the race test instead of just starting two threads and hoping they collide?
 2. Could the anomaly detector itself miss (or double-count) anomalies? Why is that acceptable for a detector but would not be acceptable for the matcher?
 3. Under READ COMMITTED, why does running detection after the match commits catch the double-match, while checking inside the creating transaction would not?
+
+---
+
+## Phase 4: Fix it
+
+### FOR UPDATE and SKIP LOCKED
+
+`SELECT ... FOR UPDATE` takes a row lock on each selected row and holds it until the
+transaction ends; a second transaction that selects the same rows FOR UPDATE would block,
+waiting. Adding `SKIP LOCKED` changes that: instead of waiting, the second matcher skips any
+row already locked and takes the next unlocked rows. So two matchers running at the same
+instant claim disjoint batches and work in parallel. The fix does not serialise the matchers,
+it partitions the queue between them, so adding matchers adds throughput. This is the single
+most important idea in the project.
+
+### The distributed-scheduling inversion
+
+Running `@Scheduled` on N instances means N concurrent executions each tick. The usual reaction
+is "that is duplicate work, add leader election so only one runs." We do the opposite on
+purpose: the work (queue rows) is partitionable, and SKIP LOCKED partitions it automatically,
+so concurrent execution is correct and additive instead of duplicated. We did not need leader
+election because we did not need to suppress concurrency; we made it safe.
+
+### Batch as the transaction boundary
+
+The locking matcher runs the whole tick in one transaction: claim the batch, pair in Java,
+write all the matches, commit once. The claim's locks are held the whole time, so no other
+matcher can touch the claimed rows mid-pairing. Claimed rows that are not paired are simply
+left WAITING and their locks drop at commit, so the next tick can claim them again. (The naive
+matcher used a transaction per pair; once the batch is exclusively locked, one transaction per
+batch is both safe and simpler, which is why the two strategies make opposite choices.)
+
+### Correctness versus liveness
+
+Because each matcher only claims a bounded batch, a compatible pair can be split across two
+matchers' batches, so neither pairs them this tick. That is a liveness cost (they wait one
+extra tick), not a correctness bug (nobody is ever double-matched). They almost certainly land
+in the same batch next tick. Trading a one-tick delay for safe parallelism is a good deal, and
+naming that tradeoff (correctness we never compromise, liveness we relax slightly) is a strong
+talking point.
+
+### Reading a query plan
+
+The claim filters `status='WAITING'` and orders by `enqueued_at`. We added a partial index on
+`enqueued_at WHERE status='WAITING'` so the claim can walk rows in wait-time order and stop
+after the first N. `EXPLAIN ANALYZE` at 50,000 waiting rows confirms it (no sort, no seq scan):
+
+```
+Limit  (cost=0.29..337.50 rows=100 ...) (actual rows=100 loops=1)
+  ->  LockRows  (cost=0.29..597.16 ...) (actual rows=100 loops=1)
+        ->  Index Scan using idx_queue_waiting_enqueued on queue_entries  (actual rows=100 ...)
+              Filter: (status = 'WAITING')
+Execution Time: ~0.15 ms
+```
+
+`LockRows` is the FOR UPDATE SKIP LOCKED step; the Index Scan over the partial index is what
+keeps the claim fast as the queue grows.
+
+---
+
+## Checkpoint questions: Phase 4
+
+Answer these before moving to Phase 5.
+
+1. What happens to claimed-but-unpaired rows when the locking matcher's transaction commits?
+2. Why can a compatible pair be split across two matchers' batches, and why is that acceptable?
+3. What would FOR UPDATE *without* SKIP LOCKED do to throughput when two matchers run at once?

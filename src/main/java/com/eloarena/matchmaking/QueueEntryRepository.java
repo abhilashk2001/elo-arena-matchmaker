@@ -12,6 +12,8 @@ public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
     /** All waiting entries, longest waiter first. Used by the naive matcher's plain read. */
     List<QueueEntry> findByStatusOrderByEnqueuedAtAsc(QueueStatus status);
 
+    long countByStatus(QueueStatus status);
+
     /**
      * Mark a queue entry MATCHED and link it to its match. The naive matcher updates by id
      * without a status guard, on purpose: under concurrency two matchers can both reach

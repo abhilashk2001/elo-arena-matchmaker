@@ -49,6 +49,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", e.getMessage());
     }
 
+    /** Bad input from application code, e.g. an unknown matcher strategy name. */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+    }
+
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String code, String message) {
         return ResponseEntity.status(status).body(ErrorResponse.of(code, message));
     }

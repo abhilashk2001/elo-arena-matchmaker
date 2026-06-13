@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
  * Drives the matcher on a fixed schedule. Present only when eloarena.matcher.loop-enabled
  * is true (default and matcher-only profiles; off for api-only and during tests).
  *
- * For now it runs the NaiveMatcher directly. Story #29 replaces this with a runtime-
- * switchable strategy so the dashboard can flip between naive and locking live.
+ * It runs whichever strategy the StrategySelector currently holds, so the dashboard can flip
+ * between naive and locking live.
  */
 @Component
 @ConditionalOnProperty(name = "eloarena.matcher.loop-enabled", havingValue = "true", matchIfMissing = false)
@@ -19,16 +19,22 @@ public class MatcherLoop {
 
     private static final Logger log = LoggerFactory.getLogger(MatcherLoop.class);
 
-    private final NaiveMatcher matcher;
+    private final StrategySelector strategies;
+    private final RedisLiveStats liveStats;
+    private final QueueEntryRepository queue;
 
-    public MatcherLoop(NaiveMatcher matcher) {
-        this.matcher = matcher;
+    public MatcherLoop(StrategySelector strategies, RedisLiveStats liveStats, QueueEntryRepository queue) {
+        this.strategies = strategies;
+        this.liveStats = liveStats;
+        this.queue = queue;
     }
 
     @Scheduled(fixedDelayString = "${eloarena.matcher.interval-ms:1000}")
     public void tick() {
         try {
-            int created = matcher.matchTick();
+            int created = strategies.current().matchTick();
+            liveStats.recordMatchesCreated(created);
+            liveStats.setQueueDepth(queue.countByStatus(QueueStatus.WAITING));
             if (created > 0) {
                 log.info("Matcher created {} match(es) this tick", created);
             }

@@ -17,7 +17,7 @@ class BandPolicyTest {
 
     // base 50, +5 per second, capped at 400 (the production defaults).
     private final BandPolicy policy =
-            new BandPolicy(new MatcherProperties(new MatcherProperties.Band(50, 5, 400)));
+            new BandPolicy(new MatcherProperties(new MatcherProperties.Band(50, 5, 400), 100));
 
     private Candidate candidateWaiting(int rating, Duration waited) {
         return new Candidate(1L, 1L, rating, NOW.minus(waited));

@@ -4,10 +4,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Tunable matcher settings, bound from the eloarena.matcher.* config keys.
- * Band expansion controls how a waiting player's acceptable rating window grows over time.
+ * Band expansion controls how a waiting player's acceptable rating window grows over time;
+ * batchSize is how many waiting rows a locking matcher claims per tick.
  */
 @ConfigurationProperties(prefix = "eloarena.matcher")
-public record MatcherProperties(Band band) {
+public record MatcherProperties(Band band, int batchSize) {
 
     /**
      * Band expansion parameters.

@@ -32,5 +32,21 @@ There is a read-then-write gap with nothing preventing two writers from acting o
 ## The fix (Phase 4)
 
 The locking matcher claims rows with `SELECT ... FOR UPDATE SKIP LOCKED`, so the two matchers
-take disjoint sets and never pair the same player. Phase 4 reuses this exact scenario and
-asserts the anomaly count is zero. The "after" numbers go here once that lands.
+take disjoint sets and never pair the same player. `LockingRaceConditionTest` reuses this exact
+scenario (100 players, two matchers released by a barrier) with a batch size of 20.
+
+### After (locking matcher, 2 concurrent threads)
+
+Stable across runs:
+
+| Metric | Naive, 2 matchers | Locking, 2 matchers |
+|---|---|---|
+| Matches created (for the rows claimed) | 100 (double) | 20 (each matcher 10, disjoint) |
+| Players double-matched | 100 | **0** |
+| Anomalies detected | ~103 | **0** |
+
+Both matchers did real work in parallel (10 pairs each) on non-overlapping batches: SKIP LOCKED
+partitioned the queue between them. No player was double-matched and no anomaly was recorded.
+With batch size 20 and 100 players, each tick claims 40 of them; the rest stay WAITING for the
+next tick. The takeaway: the same concurrency that corrupts the naive matcher is safe and
+additive under locking.
