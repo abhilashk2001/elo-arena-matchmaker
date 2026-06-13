@@ -302,3 +302,92 @@ Answer these before moving to Phase 6.
 1. Trace a crash between the player rating UPDATE and the match-status UPDATE. What state results, and why?
 2. Why return 200 with the existing result for a replayed submission instead of 409?
 3. Which fires first for a duplicate, the application status check or the uq_rating_once_per_match constraint, and why do we want both?
+
+---
+
+## Phase 6: Leaderboard and seasons
+
+### CQRS-lite: a read model that is not the source of truth
+
+The leaderboard is a separate read-optimised copy of data that already lives in Postgres. Asking
+Postgres "rank everyone by rating and give me the top 20" is an ORDER BY plus a scan that gets
+more expensive as players grow, and a single player's rank is even worse. A Redis sorted set
+keeps members ordered by score for us: top-N is `ZREVRANGE` (O(log N + M)) and a player's rank is
+`ZREVRANK` (O(log N)), both cheap regardless of size. The cost is that we now hold the same fact
+in two places, so the discipline is strict: Postgres is the source of truth, Redis is a
+projection of it, writes always go to Postgres first and only reach Redis after commit, and we
+never read a number from Redis we could not rebuild from Postgres.
+
+### Handle hydration with a single IN query
+
+The sorted set stores only player id and rating, not handles, because duplicating the handle into
+Redis would be a second copy that can drift when a handle changes. So the top-N read returns ids,
+and we hydrate them into display rows with one `findAllById` (a single `WHERE id IN (...)`) rather
+than one lookup per row, which would be the classic N+1 query problem. One round trip fills in
+every handle.
+
+### A uniform contract for live and frozen leaderboards
+
+The active season's leaderboard is served live from Redis; an ended season's is served from the
+frozen `season_leaderboard_snapshots` rows in Postgres. The dashboard should not care which is
+which, so both return the same shape (rank, player id, handle, rating). The active path reads
+Redis then hydrates; the historical path reads snapshot rows that already carry the frozen rank.
+Same response either way, so one piece of UI renders both.
+
+### Rebuild: why treating Redis as a cache is actually safe
+
+There is a window where a result commits to Postgres but the process dies before the post-commit
+ZADD runs, so Redis is missing that rating; a flush would lose the whole board. The rebuild op is
+the answer: one scan of players, ratings pipelined back into the sorted set, and the live board
+matches the truth again. Pipelining sends all the ZADDs in one round trip instead of paying
+network latency per player. The existence of a cheap, correct rebuild is what lets us treat Redis
+as a disposable projection rather than something we must protect.
+
+### Derived divisions: do not store what you can compute
+
+A division is just a band of rating (ten bands, 200 points each, Division 1 on top). We compute it
+from the rating on read instead of storing a division column. A stored copy would be a second
+value that has to be kept in step with the rating every time the rating changes, and the day they
+disagree you have a bug and no clear truth. Since the division is a pure function of the rating,
+computing it on demand means the two can never disagree. This is the same "single source of truth"
+instinct that governs the Redis projection, applied to a derived field.
+
+### Season rollover in one transaction
+
+Ending a season does four database things: freeze the final standings into snapshot rows, close
+the season (stamp `ended_at`), soft-reset every rating, and open the next season. These must be
+all-or-nothing. If a crash froze the standings but never opened a new season, the system would
+have zero active seasons and the matcher could not stamp matches; if it reset ratings but never
+froze the standings, the old season's results would be lost. So all four run in one transaction:
+either the whole rollover happened or none of it did. The ranks in the snapshot are computed in a
+single SQL statement with `ROW_NUMBER() OVER (ORDER BY rating DESC, id ASC)`, so every rank is a
+consistent view of the same instant, with ties broken deterministically by id.
+
+### Soft reset, and why a partial unique index makes "close then open" safe
+
+The reset is eFootball-style, not a wipe: every player drops one division (-200) clamped at the
+400 floor (`GREATEST(rating - 200, 400)`), so skill ordering is broadly preserved and nobody is
+flung back to 1200. Opening the next season relies on the `uq_one_active_season` partial unique
+index from Phase 1, which forbids two rows with `ended_at IS NULL`. Because we stamp the old
+season's `ended_at` before inserting the new active row, the index is satisfied at every step; if
+we tried to insert the new season first, the index would reject it. The constraint enforces the
+"exactly one active season" invariant for us rather than trusting application order.
+
+### Resetting Redis only after the database commits
+
+The same trust order from Phase 5 applies, harder. The live Redis board is reset (old key dropped,
+new season's board rebuilt from the reset ratings) only in an `afterCommit` hook, never inside the
+rollover transaction. If we reset Redis inside the transaction and it then rolled back, Redis would
+be advertising a rollover that never happened in the truth store, and there would be no event to
+undo it. Doing it after commit means Redis can only ever reflect a rollover that actually
+succeeded, and even if the process died in the gap, the rebuild op reconstructs the new board from
+Postgres. Postgres leads, Redis follows.
+
+---
+
+## Checkpoint questions: Phase 6
+
+1. Why keep the leaderboard in Redis at all when Postgres already has every rating? What specifically is cheaper, and what is the cost of the duplication?
+2. Why is the division derived from rating on read rather than stored in its own column?
+3. The rollover does four writes. Why must they share one transaction, and give one concrete bad state that a partial rollover would leave behind.
+4. Why is the Redis reset done in an afterCommit hook instead of inside the rollover transaction?

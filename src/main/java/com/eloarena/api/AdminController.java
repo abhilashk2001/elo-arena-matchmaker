@@ -1,7 +1,10 @@
 package com.eloarena.api;
 
+import com.eloarena.leaderboard.LeaderboardRebuildService;
 import com.eloarena.matchmaking.StrategySelector;
 import com.eloarena.player.PlayerSeeder;
+import com.eloarena.season.SeasonRolloverService;
+import com.eloarena.season.SeasonRolloverService.RolloverResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -27,10 +30,17 @@ public class AdminController {
 
     private final PlayerSeeder seeder;
     private final StrategySelector strategies;
+    private final LeaderboardRebuildService leaderboardRebuild;
+    private final SeasonRolloverService seasonRollover;
 
-    public AdminController(PlayerSeeder seeder, StrategySelector strategies) {
+    public AdminController(PlayerSeeder seeder,
+                          StrategySelector strategies,
+                          LeaderboardRebuildService leaderboardRebuild,
+                          SeasonRolloverService seasonRollover) {
         this.seeder = seeder;
         this.strategies = strategies;
+        this.leaderboardRebuild = leaderboardRebuild;
+        this.seasonRollover = seasonRollover;
     }
 
     @PostMapping("/seed")
@@ -45,5 +55,22 @@ public class AdminController {
     public Map<String, Object> setStrategy(@Valid @RequestBody SetStrategyRequest request) {
         strategies.select(request.strategy());
         return Map.of("strategy", strategies.currentName(), "available", strategies.available());
+    }
+
+    @PostMapping("/rebuild-leaderboard")
+    public Map<String, Object> rebuildLeaderboard() {
+        long rebuilt = leaderboardRebuild.rebuildActiveSeason();
+        return Map.of("rebuilt", rebuilt);
+    }
+
+    @PostMapping("/end-season")
+    public Map<String, Object> endSeason() {
+        RolloverResult result = seasonRollover.rollover();
+        return Map.of(
+                "endedSeasonId", result.endedSeasonId(),
+                "endedSeasonName", result.endedSeasonName(),
+                "playersSnapshotted", result.playersSnapshotted(),
+                "newSeasonId", result.newSeasonId(),
+                "newSeasonName", result.newSeasonName());
     }
 }
