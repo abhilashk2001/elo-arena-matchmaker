@@ -68,3 +68,10 @@ eloarena:
       base: 50
       expansion-per-second: 5
       max: 400
+
+  # In-app load simulator (Phase 7). It drives the application's own HTTP API, so base-url
+  # points back at this instance. Override base-url when the API runs on another host or port.
+  simulator:
+    base-url: ${ELOARENA_SIMULATOR_BASE_URL:http://localhost:8080}
+    poll-ms: 200
+    max-polls: 300

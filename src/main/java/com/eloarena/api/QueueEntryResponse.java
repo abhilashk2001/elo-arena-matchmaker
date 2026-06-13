@@ -12,6 +12,7 @@ public record QueueEntryResponse(
         Long playerId,
         int ratingAtJoin,
         String status,
+        Long matchedMatchId,
         Instant enqueuedAt) {
 
     public static QueueEntryResponse from(QueueEntry entry) {
@@ -20,6 +21,7 @@ public record QueueEntryResponse(
                 entry.getPlayerId(),
                 entry.getRatingAtJoin(),
                 entry.getStatus().name(),
+                entry.getMatchedMatchId(),
                 entry.getEnqueuedAt());
     }
 }

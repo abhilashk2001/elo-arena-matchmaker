@@ -36,7 +36,7 @@ public class EloCalculator {
     }
 
     /** Expected score (win probability) of the player rated {@code rating} against {@code opponent}. */
-    private double expectedScore(int rating, int opponent) {
+    public double expectedScore(int rating, int opponent) {
         return 1.0 / (1.0 + Math.pow(10.0, (opponent - rating) / 400.0));
     }
 
