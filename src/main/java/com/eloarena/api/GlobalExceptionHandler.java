@@ -1,5 +1,7 @@
 package com.eloarena.api;
 
+import com.eloarena.match.InvalidWinnerException;
+import com.eloarena.match.MatchNotFoundException;
 import com.eloarena.matchmaking.AlreadyQueuedException;
 import com.eloarena.matchmaking.NotQueuedException;
 import com.eloarena.player.PlayerNotFoundException;
@@ -31,6 +33,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AlreadyQueuedException.class)
     public ResponseEntity<ErrorResponse> handleAlreadyQueued(AlreadyQueuedException e) {
         return build(HttpStatus.CONFLICT, "ALREADY_QUEUED", e.getMessage());
+    }
+
+    @ExceptionHandler(MatchNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleMatchNotFound(MatchNotFoundException e) {
+        return build(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidWinnerException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidWinner(InvalidWinnerException e) {
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_WINNER", e.getMessage());
     }
 
     /** Bean Validation failure on a request body (@Valid). */
