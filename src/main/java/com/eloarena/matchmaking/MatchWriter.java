@@ -21,10 +21,12 @@ public class MatchWriter {
 
     private final MatchRepository matches;
     private final QueueEntryRepository queue;
+    private final MatchmakingMetrics metrics;
 
-    public MatchWriter(MatchRepository matches, QueueEntryRepository queue) {
+    public MatchWriter(MatchRepository matches, QueueEntryRepository queue, MatchmakingMetrics metrics) {
         this.matches = matches;
         this.queue = queue;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -32,15 +34,21 @@ public class MatchWriter {
         Candidate a = pairing.a();
         Candidate b = pairing.b();
 
+        long waitA = waitMillis(a, now);
+        long waitB = waitMillis(b, now);
+
         Match match = matches.save(new Match(
                 seasonId,
                 a.playerId(), b.playerId(),
                 a.rating(), b.rating(),
                 pairing.ratingDelta(),
-                waitMillis(a, now), waitMillis(b, now)));
+                waitA, waitB));
 
         queue.markMatched(a.queueEntryId(), match.getId());
         queue.markMatched(b.queueEntryId(), match.getId());
+
+        metrics.recordQueueWait(waitA);
+        metrics.recordQueueWait(waitB);
         return match.getId();
     }
 

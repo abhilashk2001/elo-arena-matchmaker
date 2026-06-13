@@ -19,12 +19,18 @@ import java.util.List;
 public class PairingAlgorithm {
 
     private final BandPolicy bandPolicy;
+    private final MatchmakingMetrics metrics;
 
-    public PairingAlgorithm(BandPolicy bandPolicy) {
+    public PairingAlgorithm(BandPolicy bandPolicy, MatchmakingMetrics metrics) {
         this.bandPolicy = bandPolicy;
+        this.metrics = metrics;
     }
 
     public List<Pairing> pair(List<Candidate> candidates, Instant now) {
+        return metrics.timePairing(() -> pairInternal(candidates, now));
+    }
+
+    private List<Pairing> pairInternal(List<Candidate> candidates, Instant now) {
         List<Candidate> ordered = new ArrayList<>(candidates);
         ordered.sort(Comparator.comparing(Candidate::enqueuedAt));
 
