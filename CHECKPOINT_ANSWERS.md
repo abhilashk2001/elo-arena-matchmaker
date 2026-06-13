@@ -89,3 +89,32 @@ still open, it would not see the other matcher's uncommitted match, so it would 
 conflict. Running detection after the match commits, in a fresh read, lets it see the other
 matcher's now-committed match. That is why the second matcher to commit is the one that records
 the anomaly.
+
+---
+
+## Phase 4: Fix it
+
+**Q1. What happens to claimed-but-unpaired rows when the locking matcher's transaction commits?**
+
+Nothing is done to them, so they stay WAITING. The claim took a FOR UPDATE lock on every row
+in the batch, but we only UPDATE the rows we actually paired. The unpaired claimed rows are
+never modified, and when the transaction commits their locks are released. They are immediately
+claimable again by the next tick (this one or another matcher).
+
+**Q2. Why can a compatible pair be split across two matchers' batches, and why is that acceptable?**
+
+Each matcher claims only a bounded batch (LIMIT N FOR UPDATE SKIP LOCKED), so two players who
+would pair well can end up in different matchers' batches. Neither matcher sees both halves, so
+neither pairs them this tick. That is acceptable because it is a liveness cost, not a
+correctness bug: nobody is double-matched, the two players just wait one extra tick, and they
+will very likely fall into the same batch next tick. We never compromise correctness; we relax
+liveness slightly in exchange for safe parallelism.
+
+**Q3. What would FOR UPDATE without SKIP LOCKED do to throughput with two matchers?**
+
+The second matcher would block instead of skipping. Plain FOR UPDATE locks the claimed rows and
+holds them until commit, so a second matcher selecting the same WAITING rows (the front of the
+queue, since both order by enqueued_at) would wait for the first matcher to finish rather than
+working on other rows. The matchers would serialise: two matchers would do roughly the work of
+one. SKIP LOCKED is what lets the second matcher skip the locked rows and claim the next batch,
+so they run in parallel and throughput scales.
