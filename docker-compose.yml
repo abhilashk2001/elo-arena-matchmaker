@@ -1,6 +1,11 @@
 # Local stack for Elo Arena Matchmaker.
-# Postgres is the source of truth, Redis is the live read model, app is the API + matcher.
-# The matcher-only service and the dashboard are added in later phases.
+# Postgres is the source of truth, Redis is the live read model, app is the API + matcher,
+# dashboard is the nginx-served React ops view.
+#
+#   docker compose up                          → postgres, redis, app (api+matcher), dashboard
+#   docker compose --profile matchers up --scale matcher=3
+#                                              → plus N extra matcher-only instances for the
+#                                                concurrent-matcher demo
 services:
   postgres:
     image: postgres:16-alpine
@@ -46,8 +51,41 @@ services:
       SPRING_DATASOURCE_PASSWORD: eloarena
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      # Seed 1,000 players on first boot so a clean `docker compose up` is immediately usable.
+      # Idempotent: skipped when the players table already has rows (persistent pgdata volume).
+      ELOARENA_SEED_ON_BOOT_ENABLED: "true"
+      ELOARENA_SEED_ON_BOOT_COUNT: "1000"
     ports:
       - "8080:8080"
+
+  # Extra matcher-only instances for the multi-matcher concurrency demo. Off by default; start with
+  # `docker compose --profile matchers up --scale matcher=3`. Each runs the pairing loop and claims
+  # disjoint batches via FOR UPDATE SKIP LOCKED, so the locking matcher's throughput scales while
+  # anomalies stay at zero. No published port: these are internal workers.
+  matcher:
+    build: .
+    profiles: ["matchers"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: matcher-only
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eloarena
+      SPRING_DATASOURCE_USERNAME: eloarena
+      SPRING_DATASOURCE_PASSWORD: eloarena
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+  dashboard:
+    build: ./dashboard
+    depends_on:
+      - app
+    ports:
+      # Dashboard at http://localhost:3000. nginx proxies /api, /dashboard, /actuator, and
+      # /swagger-ui to the app service on the compose network.
+      - "3000:80"
 
 volumes:
   pgdata:
