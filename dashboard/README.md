@@ -28,6 +28,25 @@ npm run build    # production build into dist/
 npm run preview  # serve the built bundle
 ```
 
+## Replay mode (the hosted demo)
+
+The public demo at GitHub Pages is a **static, backendless** build. Rather than pay for an always-on
+server, it replays two real captured runs of the system: a clean LOCKING segment (anomalies stay at
+zero) and a NAIVE segment (the race). The LOCKING/NAIVE toggle switches between the recordings, so
+the money shot still works; start/stop becomes pause/play, and a REPLAY badge marks it as a
+recording.
+
+- Recordings live in `src/replay/*.json`, captured from a running stack by `scripts/capture-demo.sh`.
+- Build the replay version with `VITE_REPLAY=1 npm run build`. Without the flag the build is the live
+  dashboard that polls a real backend (what the compose/nginx image serves).
+- The same components render in both modes; only the data source differs (`src/replay.js` vs the
+  polling hooks in `src/hooks.js`).
+- GitHub Pages deploy is automated in `.github/workflows/deploy-dashboard.yml` (builds with
+  `VITE_REPLAY=1` and the project-page base path).
+
+To refresh the recordings: bring the stack up (`docker compose --profile matchers up -d --scale
+matcher=3` for a strong NAIVE signal), run `scripts/capture-demo.sh`, and rebuild.
+
 ## Design notes
 
 - Polling only, no websockets or SSE. Stats refresh every 1s; the queue, match feed, and

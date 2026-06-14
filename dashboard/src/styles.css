@@ -37,6 +37,17 @@ body {
 }
 .title { font-weight: 700; letter-spacing: 1px; }
 .dim { color: var(--dim); font-weight: 400; }
+.replay-badge {
+  margin-left: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
 
 /* Controls */
 .controls { display: flex; align-items: center; gap: 8px; }
