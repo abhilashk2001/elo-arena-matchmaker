@@ -1,15 +1,16 @@
 package com.eloarena.dashboard;
 
+import com.eloarena.match.MatchRepository;
 import com.eloarena.matchmaking.AnomalyRepository;
 import com.eloarena.matchmaking.BandPolicy;
 import com.eloarena.matchmaking.Candidate;
 import com.eloarena.matchmaking.MatchmakingMetrics;
 import com.eloarena.matchmaking.RedisLiveStats;
 import com.eloarena.matchmaking.StrategySelector;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -37,6 +38,11 @@ public class DashboardService {
     private static final int QUEUE_LIMIT = 25;
     private static final int MATCH_FEED_LIMIT = 30;
     private static final int ANOMALY_LIMIT = 30;
+
+    // How recent a double-booking must be to count toward the live anomaly gauge. Matches the
+    // AnomalyDetector window so the headline number and the recorded feed tell the same story:
+    // a stale orphaned match is not counted, so the gauge reads zero under locking.
+    private static final Duration ANOMALY_WINDOW = Duration.ofSeconds(10);
 
     // Top waiting players, longest waiter first. WHERE status + ORDER BY enqueued_at is served by
     // the idx_queue_waiting_enqueued partial index (V4), so this is a short indexed read, not a scan.
@@ -68,11 +74,7 @@ public class DashboardService {
     private final MatchmakingMetrics metrics;
     private final StrategySelector strategies;
     private final AnomalyRepository anomalies;
-
-    // Display-only. With docker compose scale the matchers run in separate containers and there is
-    // no cheap cross-process count, so we surface a configured value rather than over-engineer
-    // service discovery just to print a number. Defaults to 1 (single instance).
-    private final int matcherCount;
+    private final MatchRepository matches;
 
     public DashboardService(JdbcTemplate jdbc,
                             BandPolicy bandPolicy,
@@ -80,14 +82,14 @@ public class DashboardService {
                             MatchmakingMetrics metrics,
                             StrategySelector strategies,
                             AnomalyRepository anomalies,
-                            @Value("${eloarena.matcher.count:1}") int matcherCount) {
+                            MatchRepository matches) {
         this.jdbc = jdbc;
         this.bandPolicy = bandPolicy;
         this.liveStats = liveStats;
         this.metrics = metrics;
         this.strategies = strategies;
         this.anomalies = anomalies;
-        this.matcherCount = matcherCount;
+        this.matches = matches;
     }
 
     /** Top waiting players with their current rating band, computed server-side. */
@@ -122,9 +124,12 @@ public class DashboardService {
                 liveStats.matchesPerSec(),
                 metrics.averageQueueWaitMs(),
                 metrics.p99PairingLatencyMs(),
-                matcherCount,
+                // Live count of matchers heartbeating across all instances (app + scaled matchers).
+                liveStats.activeMatcherCount(),
                 strategies.currentName(),
-                anomalies.count());
+                // Live gauge of players currently double-booked, scoped to a recent window so stale
+                // orphaned matches do not count. Reads zero under locking; climbs under naive.
+                matches.countDoubleBookedPlayers(Instant.now().minus(ANOMALY_WINDOW)));
     }
 
     /** Recent detected double-matches, newest first; the headline of the demo. */

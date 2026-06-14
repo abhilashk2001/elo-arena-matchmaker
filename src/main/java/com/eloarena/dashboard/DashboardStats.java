@@ -9,9 +9,10 @@ package com.eloarena.dashboard;
  * @param matchesPerSec        matches created per second, averaged over a short sliding window
  * @param avgWaitMs            mean queue wait of matched players, in milliseconds
  * @param p99PairingLatencyMs  99th-percentile pairing-pass duration, in milliseconds
- * @param activeMatcherCount   configured matcher count (display only)
+ * @param activeMatcherCount   matchers currently heartbeating across all instances
  * @param currentStrategy      "locking" or "naive"
- * @param anomalyCount         total detected double-matches; the headline number, zero under locking
+ * @param anomalyCount         players currently double-booked (recent window); the headline number,
+ *                             reads zero under locking and climbs under naive
  */
 public record DashboardStats(
         long queueDepth,

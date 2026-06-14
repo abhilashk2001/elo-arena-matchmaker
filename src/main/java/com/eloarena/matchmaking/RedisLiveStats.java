@@ -26,6 +26,14 @@ public class RedisLiveStats {
     static final String MATCHES_BUCKET_PREFIX = "eloarena:stats:matches_sec:";
     static final int WINDOW_SECONDS = 5;
 
+    // Matcher presence: each matcher instance writes a heartbeat (its score = last-tick time) into
+    // one sorted set every tick. The active count is the members whose heartbeat is recent. This is
+    // how the dashboard shows the real number of matchers across separate JVMs / containers (the app
+    // plus any scaled matcher-only instances), and it self-heals: a matcher that dies stops
+    // heartbeating and ages out of the window on the next read.
+    static final String MATCHER_HEARTBEAT_KEY = "eloarena:matchers:heartbeats";
+    static final long MATCHER_STALE_MS = 5000;
+
     private final StringRedisTemplate redis;
 
     public RedisLiveStats(StringRedisTemplate redis) {
@@ -77,6 +85,22 @@ public class RedisLiveStats {
             }
         }
         return (double) sum / WINDOW_SECONDS;
+    }
+
+    /** Record that the given matcher instance just ticked. */
+    public void recordMatcherHeartbeat(String instanceId) {
+        redis.opsForZSet().add(MATCHER_HEARTBEAT_KEY, instanceId, System.currentTimeMillis());
+    }
+
+    /**
+     * Number of matcher instances that have ticked within the staleness window. Drops stale members
+     * first so a stopped matcher does not linger in the count and the set does not grow unbounded.
+     */
+    public int activeMatcherCount() {
+        long cutoff = System.currentTimeMillis() - MATCHER_STALE_MS;
+        redis.opsForZSet().removeRangeByScore(MATCHER_HEARTBEAT_KEY, 0, cutoff);
+        Long count = redis.opsForZSet().zCard(MATCHER_HEARTBEAT_KEY);
+        return count == null ? 0 : count.intValue();
     }
 
     private long readLong(String key) {

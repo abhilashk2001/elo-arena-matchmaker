@@ -610,3 +610,25 @@ same idea applied to the learning goals: fifteen concepts, each mapped to where 
 the code that exercises it. The point of the pass is adversarial: read each sentence and ask "what
 proves this?", and if nothing does, either cut the sentence or write the test. A claim without an
 artifact is a liability in an interview; a claim with one is a credential.
+
+### Designing a metric that does not lie: the anomaly counter
+
+A late but instructive bug. The dashboard's anomaly counter was defined as "players in more than one
+IN_PROGRESS match," and the audit detector used the same rule. That definition conflates two
+different things: a genuine concurrent double-booking (the bug we want to show), and a player who
+simply has a stale match still marked IN_PROGRESS. The second happens constantly: a naive duplicate
+never gets a result, or the simulator is stopped mid-match, leaving a match open forever. When that
+player later rematches, perfectly correctly under locking, they momentarily sit in two IN_PROGRESS
+matches and trip the counter. The result was a counter that climbed even under locking and never
+returned to zero, which is the worst thing a demo metric can do: it contradicts the very claim the
+demo exists to make.
+
+The fix was to scope the metric to intent. A real double-booking is two matches for one player
+created within seconds of each other, so detection (and the headline gauge) only consider matches
+created inside a recent window; a stale orphan ages out and stops counting. The headline also became
+a live gauge of currently-double-booked players rather than a cumulative total, so it reads zero
+under locking, climbs under naive, and heals back to zero within seconds of flipping back, because
+the offending matches either complete or fall out of the window. The lesson is general: a metric is a
+definition, and if the definition admits states you did not mean, the number will eventually tell a
+story that is not true. Make the metric measure the thing you actually claim, and prove it recovers,
+not just that it rises.
