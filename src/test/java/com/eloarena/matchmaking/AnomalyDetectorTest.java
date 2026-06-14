@@ -63,6 +63,27 @@ class AnomalyDetectorTest extends IntegrationTest {
     }
 
     @Test
+    void ignoresStaleOrphanedMatchWhenPlayerRematches() {
+        long p = players.save(new Player("P_1500", 1500, "NA")).getId();
+        long q = players.save(new Player("Q_1500", 1500, "NA")).getId();
+        long r = players.save(new Player("R_1500", 1500, "NA")).getId();
+        long season = seasons.currentSeasonId();
+
+        // An old match left IN_PROGRESS forever (a naive duplicate that never got a result, or a
+        // match open when the simulator stopped). Age it past the detection window.
+        long orphan = matches.save(new Match(season, p, q, 1500, 1500, 0, 0, 0)).getId();
+        jdbc.update("UPDATE matches SET created_at = now() - interval '30 seconds' WHERE id = ?", orphan);
+
+        // Player p legitimately rematches under locking. They are now in two IN_PROGRESS matches,
+        // but the older one is a stale orphan, so this must NOT be flagged as a double-booking.
+        long fresh = matches.save(new Match(season, p, r, 1500, 1500, 0, 0, 0)).getId();
+        detector.check(fresh, p, r);
+
+        assertThat(anomalies.count()).isZero();
+        assertThat(matches.countDoubleBookedPlayers(java.time.Instant.now().minusSeconds(10))).isZero();
+    }
+
+    @Test
     void recordsNoAnomalyForACleanMatch() {
         long a = players.save(new Player("A_1500", 1500, "NA")).getId();
         long b = players.save(new Player("B_1500", 1500, "NA")).getId();
