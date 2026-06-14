@@ -73,6 +73,10 @@ eloarena:
     # How many waiting rows a locking matcher claims per tick. Small enough that other
     # matchers always have rows to claim, large enough to find good pairs within the batch.
     batch-size: 100
+    # Display-only matcher count for the dashboard stats strip. With docker compose scale the
+    # matchers run as separate containers and there is no cheap cross-process count, so this is
+    # the number the dashboard shows. Set it to match your compose scale; defaults to 1.
+    count: ${ELOARENA_MATCHER_COUNT:1}
     # Band expansion: a waiting player's acceptable rating half-width starts at 'base'
     # and grows by 'expansion-per-second' each second, capped at 'max'.
     band:

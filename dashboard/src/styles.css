@@ -1,0 +1,165 @@
+/* Dense, dark, monospace. The look is mission control, not product: small type, tight rows, a
+   single accent green for healthy and red for anomalies. No design system, just a few variables. */
+:root {
+  --bg: #0b0e11;
+  --panel: #12161b;
+  --panel-2: #161b22;
+  --line: #232a33;
+  --text: #c9d1d9;
+  --dim: #6b7682;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --accent: #58a6ff;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.app { padding: 10px 14px 24px; }
+
+/* Top bar: title + controls */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.title { font-weight: 700; letter-spacing: 1px; }
+.dim { color: var(--dim); font-weight: 400; }
+
+/* Controls */
+.controls { display: flex; align-items: center; gap: 8px; }
+.btn, .toggle-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.btn:hover, .toggle-btn:hover { border-color: var(--accent); }
+.btn:disabled, .toggle-btn:disabled { opacity: 0.5; cursor: default; }
+.toggle { display: flex; margin-left: 6px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.toggle-btn { border: none; border-radius: 0; }
+.toggle-btn.active.ok { background: rgba(63, 185, 80, 0.18); color: var(--ok); }
+.toggle-btn.active.warn { background: rgba(248, 81, 73, 0.18); color: var(--bad); }
+
+/* Stats strip */
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr) 1.4fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.stat-value { font-size: 20px; font-weight: 700; }
+.stat-value.big { font-size: 34px; line-height: 1.1; }
+.stat-label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat.ok .stat-value { color: var(--ok); }
+.stat.warn .stat-value { color: var(--warn); }
+.stat.anomaly { display: flex; flex-direction: column; justify-content: center; }
+.stat.anomaly.ok .stat-value { color: var(--ok); }
+.stat.anomaly.bad {
+  border-color: var(--bad);
+  background: rgba(248, 81, 73, 0.1);
+  animation: pulse 1s infinite;
+}
+.stat.anomaly.bad .stat-value { color: var(--bad); }
+
+/* Panels grid */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.panel h2 {
+  font-size: 12px;
+  letter-spacing: 1px;
+  margin: 2px 0 8px;
+  color: var(--text);
+}
+
+/* Rows shared by every panel */
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-bottom: 1px solid rgba(35, 42, 51, 0.5);
+}
+.row.head { color: var(--dim); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.empty { color: var(--dim); padding: 10px 4px; }
+
+/* Column widths */
+.c-handle { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-rating { flex: 0 0 90px; text-align: right; }
+.c-wait { flex: 0 0 92px; text-align: right; color: var(--dim); }
+.c-band { flex: 0 0 120px; display: flex; align-items: center; gap: 6px; }
+.c-rank { flex: 0 0 28px; color: var(--dim); }
+.c-id { flex: 0 0 50px; color: var(--dim); }
+.c-pair { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-delta { flex: 0 0 40px; text-align: right; }
+
+.div-tag { color: var(--dim); font-size: 11px; }
+
+/* Band bar: animates toward the latest server-computed currentBand */
+.band-bar { flex: 1 1 auto; height: 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.band-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--warn)); transition: width 1.8s linear; }
+.band-num { flex: 0 0 42px; text-align: right; color: var(--dim); font-size: 11px; }
+
+/* Anomaly rows flash red */
+.anomaly-row { background: rgba(248, 81, 73, 0.14); animation: flash 0.9s ease-in-out infinite; }
+.badge {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+/* Leaderboard rank-change flashes */
+.move-up { background: rgba(63, 185, 80, 0.16); }
+.move-down { background: rgba(248, 81, 73, 0.14); }
+.arrow.up { color: var(--ok); }
+.arrow.down { color: var(--bad); }
+
+@keyframes flash {
+  0%, 100% { background: rgba(248, 81, 73, 0.10); }
+  50% { background: rgba(248, 81, 73, 0.28); }
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.0); }
+  50% { box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.35); }
+}
+
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; }
+  .stats-strip { grid-template-columns: repeat(3, 1fr); }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "elo-arena-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Ops dashboard for the Elo Arena matchmaker. Polls the backend read endpoints and renders a dense mission-control view.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

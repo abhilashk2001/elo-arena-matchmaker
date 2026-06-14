@@ -3,6 +3,7 @@ package com.eloarena.matchmaking;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.distribution.ValueAtPercentile;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -56,5 +57,23 @@ public class MatchmakingMetrics {
     /** Time a pairing pass and return its result. */
     public <T> T timePairing(Supplier<T> pairing) {
         return pairingTimer.record(pairing);
+    }
+
+    /** Mean time a matched player spent waiting in the queue, in milliseconds. */
+    public double averageQueueWaitMs() {
+        return queueWaitTimer.mean(TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * The 99th-percentile pairing-pass duration, in milliseconds. Reads the pre-registered 0.99
+     * percentile off the timer's snapshot; returns 0 if no pass has been timed yet.
+     */
+    public double p99PairingLatencyMs() {
+        for (ValueAtPercentile value : pairingTimer.takeSnapshot().percentileValues()) {
+            if (value.percentile() == 0.99) {
+                return value.value(TimeUnit.MILLISECONDS);
+            }
+        }
+        return 0.0;
     }
 }
