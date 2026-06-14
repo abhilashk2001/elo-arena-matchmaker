@@ -11,9 +11,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param pollMs    how long each simulated player waits between queue-status polls
  * @param maxPolls  give-up bound on polling for a match, so a player who is never paired (an odd
  *                  one out) ends cleanly instead of spinning forever
+ * @param rampUpMs  spread the initial join over this window instead of having every player join at
+ *                  once. A synchronized burst of tens of thousands of joins opens both an inbound
+ *                  and an outbound socket per player in this single JVM, which blows the per-process
+ *                  file-descriptor limit on the spot; ramping the start keeps concurrent sockets to
+ *                  the modest steady-state level. 0 (the default) means no ramp, which is fine for
+ *                  the small player counts used in tests.
  */
 @ConfigurationProperties(prefix = "eloarena.simulator")
-public record SimulatorProperties(String baseUrl, long pollMs, int maxPolls) {
+public record SimulatorProperties(String baseUrl, long pollMs, int maxPolls, long rampUpMs) {
 
     public SimulatorProperties {
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -24,6 +30,9 @@ public record SimulatorProperties(String baseUrl, long pollMs, int maxPolls) {
         }
         if (maxPolls <= 0) {
             maxPolls = 300;
+        }
+        if (rampUpMs < 0) {
+            rampUpMs = 0;
         }
     }
 }

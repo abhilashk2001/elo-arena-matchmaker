@@ -45,6 +45,7 @@ public class ResultService {
         this.events = events;
         this.processingTimer = Timer.builder("eloarena.result.processing")
                 .description("Time to process a match result, the hot-row contention probe")
+                .publishPercentiles(0.5, 0.95, 0.99)
                 .register(meterRegistry);
     }
 

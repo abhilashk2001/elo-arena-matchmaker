@@ -13,6 +13,17 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/eloarena}
     username: ${SPRING_DATASOURCE_USERNAME:eloarena}
     password: ${SPRING_DATASOURCE_PASSWORD:eloarena}
+    hikari:
+      # Connection-pool size is the throughput knob this project tunes (Phase 7, story P7.5).
+      # HikariCP's default is 10; under the queue storm that default is the bottleneck, where
+      # p99 latency spikes (requests waiting on connection acquisition) while the average stays
+      # calm. 30 is the measured sweet spot here; see BENCHMARKS.md. Override with DB_POOL_SIZE.
+      maximum-pool-size: ${DB_POOL_SIZE:30}
+      minimum-idle: ${DB_POOL_MIN_IDLE:10}
+      pool-name: eloarena-pool
+      # Fail fast rather than pile up when the pool is exhausted, so the contention shows up as a
+      # measurable acquisition wait (hikaricp.connections.acquire) instead of an unbounded queue.
+      connection-timeout: 10000
 
   data:
     redis:
@@ -75,3 +86,7 @@ eloarena:
     base-url: ${ELOARENA_SIMULATOR_BASE_URL:http://localhost:8080}
     poll-ms: 200
     max-polls: 300
+    # Spread the initial join over this many ms so tens of thousands of players don't open their
+    # sockets all at once and exhaust the per-process file-descriptor limit. 0 = no ramp (tests);
+    # the benchmark scripts set a few seconds. See SimulatorProperties.rampUpMs.
+    ramp-up-ms: ${ELOARENA_SIMULATOR_RAMP_UP_MS:0}

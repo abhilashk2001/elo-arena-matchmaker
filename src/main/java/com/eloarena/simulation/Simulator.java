@@ -93,6 +93,12 @@ public class Simulator {
     /** The full lifecycle of one simulated player, repeated while it keeps requeuing. */
     private void runPlayer(long playerId, SimulationConfig config, RestClient client) {
         try {
+            // Stagger the initial join across the ramp window so all the players do not open their
+            // sockets in the same instant; see SimulatorProperties.rampUpMs for why that matters.
+            long rampUpMs = properties.rampUpMs();
+            if (rampUpMs > 0) {
+                Thread.sleep(ThreadLocalRandom.current().nextLong(rampUpMs));
+            }
             do {
                 if (!running) {
                     return;

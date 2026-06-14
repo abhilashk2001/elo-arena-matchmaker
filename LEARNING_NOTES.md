@@ -391,3 +391,91 @@ Postgres. Postgres leads, Redis follows.
 2. Why is the division derived from rating on read rather than stored in its own column?
 3. The rollover does four writes. Why must they share one transaction, and give one concrete bad state that a partial rollover would leave behind.
 4. Why is the Redis reset done in an afterCommit hook instead of inside the rollover transaction?
+
+---
+
+## Phase 7: Load, metrics, and benchmarks
+
+### Closed-loop load, and why the simulator lives in the app
+
+The load generator is an in-app simulator driven by virtual threads, not an external script hammering
+the HTTP API. Each virtual player runs a loop: join the queue, wait to be matched, "play" for a short
+randomised duration, submit a result, then with some probability requeue. That closed loop matters
+because it models the real shape of the system, where a finite population of players cycles through
+the queue rather than an infinite firehose of independent requests. Virtual threads make tens of
+thousands of these loops cheap: each one is mostly parked waiting (in queue, in a match), so the cost
+is a heap object, not an OS thread. A thread-per-player pool would have fallen over long before 50k.
+The simulator lives inside the app so it can talk to the services directly and so the whole thing is
+one reproducible artifact you start with an admin endpoint, instead of a separate load rig you have
+to stand up and keep in sync.
+
+### Average hides, percentiles tell the truth
+
+The single most useful idea in this phase. Under load the average latency stays calm while a real and
+growing fraction of requests are slow, because the average is dominated by the many fast requests and
+the slow tail barely moves it. If 95 requests take 5ms and 5 take 2000ms, the average is about 105ms,
+which looks fine and describes none of the actual experiences. The percentile asks a different
+question: sort every request by latency and read the value at the 99th position out of 100. p99 = 2000ms
+here, and that is what one in a hundred of your users actually felt. We publish p50, p95, and p99 on
+the result-processing timer precisely so the tail is visible. The average is the number that lets a
+starved system look healthy; the percentile is the number that catches it.
+
+### Coordinated omission, the measurement bug that flatters you
+
+A subtle trap specific to closed-loop load. When a request is slow, the loop that issued it is blocked
+waiting for it, so it does not issue the requests it *would* have issued during that stall. The slow
+period therefore produces fewer samples, not more, so the very latencies you most want to see are
+under-counted and your percentiles come out optimistic. The system stalled but the histogram barely
+noticed, because the stall suppressed its own measurements. The honest mitigations are to keep the
+offered load independent of response time where possible, to measure from the would-have-started time
+rather than the actually-sent time, and at minimum to be explicit that a closed-loop number is a
+floor on the real tail, not the ceiling. Naming the bias is the point: a benchmark that does not
+mention coordinated omission is probably reporting numbers that are too good.
+
+### Pool sizing: the connection pool is a queue, and small is sometimes faster
+
+HikariCP's default pool is 10 connections. Under the queue storm that default is the bottleneck, and
+the way it shows up is the lesson: the average request latency stays low while p99 spikes, because
+requests are not slow doing work, they are fast once they have a connection and slow *waiting in line
+to get one*. The probe that localises this is `hikaricp.connections.acquire`, the time a thread spends
+blocked waiting for a free connection. When acquire-wait is high and actual query time is low, the
+pool is the wall. The fix is not "make the pool huge". A pool larger than the database can usefully
+serve just moves the queue from your app into Postgres and adds context-switching, so there is a sweet
+spot. We measured it by sweeping pool sizes and watching acquire-wait fall and then flatten; the knee
+is where you stop. The counterintuitive part is that a right-sized small pool can beat a large one,
+because bounded concurrency keeps each query fast instead of letting everything contend at once.
+
+### Scaling curves, and why N matchers do not give N times the throughput
+
+The headline claim of the project is that FOR UPDATE SKIP LOCKED lets concurrent matchers partition
+the queue and add real throughput instead of fighting over the same rows. The scaling benchmark tests
+exactly that by running 1, 2, and 3 matcher instances against one shared queue and plotting pairing
+throughput. The honest expectation is sublinear scaling, not perfect. Going from 1 to N never
+multiplies throughput by N, because the matchers still share one Postgres: the same row locks, the
+same connection pool, the same disk. This is Amdahl's law in the flesh, the serial fraction (the
+shared database) caps the speedup no matter how many matchers you add. We measured roughly 1.0x, 1.6x,
+2.0x for one, two, three matchers: the curve climbs, just not linearly. What SKIP LOCKED buys is that
+the curve goes *up* at all rather than flat or down. The naive matcher's curve is the cautionary
+contrast: add matchers and throughput does not climb, and worse, the anomaly count does, because they
+are pairing the same players twice. A good scaling story is therefore two numbers per point, not one:
+throughput climbed, and anomalies stayed at zero.
+
+The methodology trap worth remembering: **you can only measure a component's scaling when that
+component is the bottleneck.** The first attempt ran the scaling test through the closed-loop
+simulator, and the curve was flat and noisy, because the simulator's poll-play-submit cycle offers
+only a few dozen matches per second, far below what even one matcher can pair. The matchers were
+sitting idle, so adding more changed nothing; the benchmark was measuring the *load generator*, not
+the matcher. The fix was to take the simulator out of the loop and pre-fill the queue with a deep
+backlog of waiting players, so every matcher is saturated and the only variable left is how well they
+partition the work. If your scaling curve is flat, before concluding "it does not scale", check that
+the thing you are scaling is actually the bottleneck and not starved for input.
+
+---
+
+## Checkpoint questions: Phase 7
+
+1. Under the queue storm the average result latency stayed flat while p99 spiked. What was actually slow, and why did the average fail to show it?
+2. Which single metric localised the connection-pool bottleneck, and how do you read it to tell "waiting for a connection" apart from "slow query"?
+3. Why is a bigger connection pool not automatically better? What did sweeping pool sizes reveal about the sweet spot?
+4. Did three matchers triple pairing throughput? Give the measured factor and explain the gap.
+5. What is coordinated omission, and why does a closed-loop simulator make a stalled system look healthier than it is?
