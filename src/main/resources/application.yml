@@ -61,6 +61,14 @@ eloarena:
   # The matcher-only and api-only profiles override this.
   role: all
 
+  # Seed players once on first boot so a clean `docker compose up` yields a populated system.
+  # Off by default (tests and manual runs seed explicitly); the compose app service enables it.
+  # Idempotent: only seeds when the players table is empty, so restarts do not re-seed.
+  seed-on-boot:
+    enabled: ${ELOARENA_SEED_ON_BOOT_ENABLED:false}
+    count: ${ELOARENA_SEED_ON_BOOT_COUNT:1000}
+    seed: ${ELOARENA_SEED_ON_BOOT_SEED:42}
+
   matcher:
     # Active matching strategy at startup: locking (safe) or naive (the broken demo mode).
     # Switchable at runtime via PUT /api/admin/matcher-strategy.

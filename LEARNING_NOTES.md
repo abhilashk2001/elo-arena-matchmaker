@@ -4,6 +4,29 @@ A running study guide built up while implementing Elo Arena Matchmaker. Each ent
 explains a backend concept the way it shows up in this project: what problem it solves,
 the naive approach, and why the chosen approach is better.
 
+## Curriculum coverage
+
+The 15 core concepts this project set out to teach, and where each one is explained and exercised
+in code. Use this as the index into the per-phase notes below.
+
+| # | Concept | Notes section | Code / test artifact |
+|---|---------|---------------|----------------------|
+| 1 | ACID transactions & boundaries | Phase 5 | `ResultService`, `ResultConcurrencyTest` |
+| 2 | Pessimistic locking, `FOR UPDATE SKIP LOCKED` | Phase 4 | `LockingMatcher`, `LockingRaceConditionTest` |
+| 3 | Race conditions & deterministic reproduction | Phase 3 | `RaceConditionTest` (CyclicBarrier), `RACE_REPRODUCTION.md` |
+| 4 | Idempotency & idempotency keys | Phase 5 | `ResultService`, `ResultIdempotencyTest` |
+| 5 | Read models / CQRS-lite | Phase 6 | `Leaderboard`, `LeaderboardService`, `LeaderboardRebuildService` |
+| 6 | Redis data structures (sorted sets, TTLs, atomic ops) | Phase 6, Phase 8 | `Leaderboard` (ZSET), `RedisLiveStats` (sliding window + TTL) |
+| 7 | Connection pooling & lifecycle | Phase 7 | HikariCP config in `application.yml`, `scripts/benchmark.sh` |
+| 8 | Scheduled jobs & distributed scheduling pitfalls | Phase 2, Phase 4 | `MatcherLoop`, `StrategySelector` |
+| 9 | Indexing & query planning (`EXPLAIN ANALYZE`) | Phase 4, Phase 8 | `V4__queue_waiting_enqueued_index.sql`, `ClaimQueryPlanTest` |
+| 10 | Load testing, p50/p95/p99 | Phase 7 | `Simulator`, `loadtest/*.js`, `BENCHMARKS.md` |
+| 11 | Observability: metrics, counters, gauges | Phase 7 | `MatchmakingMetrics`, `/actuator/prometheus` |
+| 12 | API design: resources, status codes, validation | Phase 1, Phase 2 | `*Controller`, `GlobalExceptionHandler`, `*ControllerTest` |
+| 13 | Data modeling: normalization, history tables | Phase 1, Phase 5 | `V1__init.sql`, `RatingHistory` |
+| 14 | Docker & Docker Compose orchestration | Phase 9 | `docker-compose.yml`, `Dockerfile`, `dashboard/Dockerfile` |
+| 15 | Normal distributions & seed-data shape | Phase 1 | `PlayerSeeder`, `PlayerSeederTest` |
+
 ---
 
 ## Phase 1: Skeleton and data layer
@@ -539,3 +562,51 @@ size of solution, which is why the endpoints were built cheap and bounded in the
 1. The dashboard polls a handful of endpoints every one to two seconds from every open tab. What is the per-endpoint latency budget, what three implementation choices keep each read inside it, and how is the budget verified rather than assumed?
 2. Why is the rating band (`currentBand`) computed on the server and sent ready to render, instead of computing it in the browser from the raw enqueue time? What bug does that prevent?
 3. This is a "real-time" dashboard with no websockets. Why is polling the right size of solution here, and when would it not be?
+
+---
+
+## Phase 9: Polish and publish
+
+### Docker Compose orchestration: one command on a clean machine
+
+The acceptance bar for the whole project is `git clone && docker compose up` producing a seeded,
+working system on a machine with nothing but Docker installed. Hitting that bar is a lesson in a few
+Compose mechanics. The first is ordering: the app must not start until Postgres and Redis are
+actually accepting connections, which is not the same as their containers having started. Compose's
+`depends_on` alone only waits for the container to start, so it is paired with a `healthcheck` on
+each datastore (`pg_isready` for Postgres, `redis-cli ping` for Redis) and `depends_on:
+condition: service_healthy`, which waits for the check to pass. The second is the image build: both
+the app and the dashboard build inside Docker (a multi-stage Dockerfile each: Maven build then a
+slim JRE for the app; Node build then nginx for the dashboard), so the clone has no host toolchain
+requirement at all. The third is first-run usability: an empty database is technically working but
+useless to a reader, so an env flag (`ELOARENA_SEED_ON_BOOT_ENABLED`) triggers a one-time seed of
+1,000 players on boot, made idempotent by seeding only when the players table is empty so a restart
+against the persistent volume does not duplicate. The fourth is the network seam: the dashboard is
+served by nginx, which proxies the API paths to the app using the service name `app` as the
+hostname, because Compose gives every service DNS on a shared network. The browser then makes
+same-origin calls, which sidesteps CORS entirely, the same arrangement the Vite dev proxy provides
+in development.
+
+### Compose profiles: optional services without a second file
+
+The multi-matcher demo needs extra matcher-only instances, but a default `docker compose up` should
+stay lean (one API+matcher, the datastores, the dashboard). Compose profiles solve this without
+maintaining a separate override file: the `matcher` service is tagged with a `matchers` profile, so
+it is inert on a normal `up` and only starts with `docker compose --profile matchers up --scale
+matcher=3`. That is the switch that turns the single-matcher default into the concurrent-matcher
+configuration the race condition needs, and it keeps the "interesting" multi-instance setup one
+explicit flag away rather than always-on.
+
+### Traceability: every claim maps to an artifact
+
+The closing discipline of a portfolio project is that nothing in the README is asserted without
+something in the repo that backs it. Each performance claim points at the script that produced it
+and the committed results file (the 840-vs-0 anomaly numbers come from `scaling-results.md` via
+`scripts/scaling-benchmark.sh`; the 1.98x scaling from `drain-results.md`; the sub-50ms dashboard
+reads from `dashboard-latency-results.md`). Each correctness claim points at a named test (the race
+at `RaceConditionTest` and `LockingRaceConditionTest`, idempotency at `ResultIdempotencyTest`, the
+query plan at `ClaimQueryPlanTest`). The curriculum coverage table at the top of this file is the
+same idea applied to the learning goals: fifteen concepts, each mapped to where it is explained and
+the code that exercises it. The point of the pass is adversarial: read each sentence and ask "what
+proves this?", and if nothing does, either cut the sentence or write the test. A claim without an
+artifact is a liability in an interview; a claim with one is a credential.

@@ -4,11 +4,12 @@
 // anomalies counter.
 //
 // IMPORTANT: the double-match race only happens with MORE THAN ONE matcher instance running
-// against the same database. Bring the stack up with three matcher instances first:
+// against the same database. The default `app` already runs a matcher; bring up extra
+// matcher-only instances so several matchers contend for the same queue:
 //
-//     docker compose up -d --scale app=3
+//     docker compose --profile matchers up -d --scale matcher=3
 //
-// Then run this against the load balancer / any instance:
+// Then run this against the app:
 //
 //     STRATEGY=naive   k6 run loadtest/race-reproduction.js   # expect anomalies > 0
 //     STRATEGY=locking k6 run loadtest/race-reproduction.js   # expect anomalies == 0
