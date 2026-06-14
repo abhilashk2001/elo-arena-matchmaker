@@ -193,3 +193,68 @@ ever touched once the database change is durable, so it can only reflect a rollo
 succeeded. And if the process dies in the gap between commit and the reset, the rebuild op
 reconstructs the new season's board from Postgres, so the worst case is a brief lag, not a wrong
 board. Postgres leads, Redis follows.
+
+## Phase 7: Load, metrics, and benchmarks
+
+**Q1. The average result latency stayed flat while p99 spiked. What was actually slow, and why did the average miss it?**
+
+Nothing was slow doing the actual work; requests were slow *waiting for a database connection*. At
+the default pool of 10, threads blocked an average of ~122 ms in `hikaricp.connections.acquire`
+before they could run their query, and a handful blocked far longer (the max was ~1.8 s). The
+average hid it because the average is dominated by the majority of requests that did get a connection
+quickly: if most requests are fast and a slice are very slow, the many fast ones drag the mean down to
+something that looks healthy. The p99 asks the question the average refuses to: sort every request by
+latency and read the one at the 99th percentile, and that is the request that waited seconds in line.
+The average is the metric that lets a starved pool look fine; the percentile is the one that catches
+it. That is exactly why we publish p50/p95/p99 on the result timer instead of just a mean.
+
+**Q2. Which metric localised the connection-pool bottleneck, and how do you read it?**
+
+`hikaricp.connections.acquire`, the time a thread spends blocked waiting for a free connection from
+the pool, separate from how long the query itself takes once it has one. You read it against the
+actual work time: when acquire-wait is high (122 ms) while the query/result processing itself is low
+(tens of ms), the bottleneck is the pool, not the database, because threads are spending their time in
+line rather than doing work. If instead acquire-wait were near zero but query time were high, the pool
+would be fine and the database would be the bottleneck. The two metrics together tell you *where* the
+time goes, which is the whole game in performance work: do not guess, measure which stage is slow.
+
+**Q3. Why is a bigger pool not automatically better? What did sweeping pool sizes reveal?**
+
+Because a bigger pool does not make any single piece of work faster; it just allows more work to hit
+the database at the same time, and past a point that concurrency is the problem rather than the
+solution. The sweep showed it directly: as the pool grew 10 → 30 → 50, acquire-wait fell (122 → 75 →
+59 ms) exactly as you would hope, but result-processing p99 went the *other* way (40 → 130 → 201 ms).
+The contention did not disappear, it relocated: with connections no longer scarce, more result
+submissions ran concurrently and piled onto the same hot rows (the two players' ratings, the match
+row), so the wait moved from "acquiring a connection" to "acquiring a row lock in Postgres". The sweet
+spot is where you have relieved connection starvation without drowning the database, about 30 here,
+which is what the app defaults to. A pool larger than the database can usefully serve just moves the
+queue from your app into Postgres.
+
+**Q4. Did three matchers triple pairing throughput? Give the measured factor and explain the gap.**
+
+No. With the matcher saturated against a deep pre-filled queue, throughput went 250 → 410 → 495
+matches/s for one, two, three matchers, so three matchers gave about **1.98x, roughly double, not
+triple**. The gap is Amdahl's law. `FOR UPDATE SKIP LOCKED` lets the matchers partition the *queue
+claim* perfectly (each grabs a disjoint batch, none blocks another, and anomalies stayed at zero), but
+that is only one part of the work. They still share one Postgres: the same connection pool, the same
+write-ahead log, the same CPU, and the single active-season row that every match insert reads. That
+shared, serial fraction cannot be parallelised by adding matchers, so it caps the speedup. The win
+SKIP LOCKED actually delivers is qualitative: the curve climbs instead of flattening or collapsing
+into double-bookings, which is what the naive matcher does (under realistic load it produced 840
+anomalies and *less* throughput than a single locking matcher). Correct and scaling beats wrong and
+not.
+
+**Q5. What is coordinated omission, and why does a closed loop make a stalled system look healthy?**
+
+Coordinated omission is a measurement bias in closed-loop load: when a request is slow, the client
+loop that issued it is blocked waiting, so during the stall it does *not* issue the requests it
+otherwise would have. The slow period therefore generates fewer samples, not more, so the worst
+latencies are under-counted and the percentiles come out optimistic, the system stalled but the
+histogram barely flinched, because the stall suppressed its own measurements. A closed-loop simulator
+(one virtual thread per player, each blocked on its own outstanding request) is the textbook setup for
+it. That is why the benchmark write-up calls its tail latencies a floor, not a ceiling, and why the
+relative comparisons (default vs tuned pool, naive vs locking) are trusted while the absolute
+millisecond tails are treated as best-case. The honest fixes are to keep offered load independent of
+response time, or to measure from when a request *should* have started rather than when it actually
+did; the minimum is to name the bias so nobody reads the numbers as worst-case truth.

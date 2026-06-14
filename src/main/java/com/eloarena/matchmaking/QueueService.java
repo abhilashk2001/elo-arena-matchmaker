@@ -44,6 +44,16 @@ public class QueueService {
     }
 
     /**
+     * The player's most recent queue entry, so a client (or the simulator) can poll whether
+     * they have been matched yet and learn the match id. 404 if the player has never queued.
+     */
+    @Transactional(readOnly = true)
+    public QueueEntry status(long playerId) {
+        return queue.findFirstByPlayerIdOrderByIdDesc(playerId)
+                .orElseThrow(() -> new NotQueuedException(playerId));
+    }
+
+    /**
      * Remove a player's WAITING entry. Uses a conditional update so a concurrent match by
      * the matcher is never clobbered: if there is no WAITING row to cancel, we report 404
      * rather than touching a MATCHED entry.

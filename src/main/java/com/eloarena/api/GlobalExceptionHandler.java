@@ -67,6 +67,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
     }
 
+    /** A request that conflicts with current state, e.g. starting a simulation already running. */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException e) {
+        return build(HttpStatus.CONFLICT, "CONFLICT", e.getMessage());
+    }
+
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String code, String message) {
         return ResponseEntity.status(status).body(ErrorResponse.of(code, message));
     }

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
 
@@ -13,6 +14,9 @@ public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
     List<QueueEntry> findByStatusOrderByEnqueuedAtAsc(QueueStatus status);
 
     long countByStatus(QueueStatus status);
+
+    /** A player's most recent queue entry, used by the poll endpoint to report match status. */
+    Optional<QueueEntry> findFirstByPlayerIdOrderByIdDesc(long playerId);
 
     /**
      * Mark a queue entry MATCHED and link it to its match. The naive matcher updates by id

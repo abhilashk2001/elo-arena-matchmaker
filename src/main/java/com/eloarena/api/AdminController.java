@@ -5,10 +5,14 @@ import com.eloarena.matchmaking.StrategySelector;
 import com.eloarena.player.PlayerSeeder;
 import com.eloarena.season.SeasonRolloverService;
 import com.eloarena.season.SeasonRolloverService.RolloverResult;
+import com.eloarena.simulation.SimulationConfig;
+import com.eloarena.simulation.SimulationStatus;
+import com.eloarena.simulation.Simulator;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,15 +36,18 @@ public class AdminController {
     private final StrategySelector strategies;
     private final LeaderboardRebuildService leaderboardRebuild;
     private final SeasonRolloverService seasonRollover;
+    private final Simulator simulator;
 
     public AdminController(PlayerSeeder seeder,
                           StrategySelector strategies,
                           LeaderboardRebuildService leaderboardRebuild,
-                          SeasonRolloverService seasonRollover) {
+                          SeasonRolloverService seasonRollover,
+                          Simulator simulator) {
         this.seeder = seeder;
         this.strategies = strategies;
         this.leaderboardRebuild = leaderboardRebuild;
         this.seasonRollover = seasonRollover;
+        this.simulator = simulator;
     }
 
     @PostMapping("/seed")
@@ -72,5 +79,20 @@ public class AdminController {
                 "playersSnapshotted", result.playersSnapshotted(),
                 "newSeasonId", result.newSeasonId(),
                 "newSeasonName", result.newSeasonName());
+    }
+
+    @PostMapping("/simulate/start")
+    public SimulationStatus startSimulation(@Valid @RequestBody SimulationConfig config) {
+        return simulator.start(config);
+    }
+
+    @PostMapping("/simulate/stop")
+    public SimulationStatus stopSimulation() {
+        return simulator.stop();
+    }
+
+    @GetMapping("/simulate/status")
+    public SimulationStatus simulationStatus() {
+        return simulator.status();
     }
 }
