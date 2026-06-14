@@ -1,14 +1,10 @@
 import { useState } from 'react';
-import { startSimulation, stopSimulation, setStrategy } from '../api.js';
 
-// Drives the demo from the UI: start/stop the simulator and flip the matcher strategy. The toggle
-// is the money shot. With load running, flipping to NAIVE makes red anomaly rows appear within
-// seconds, and flipping back to LOCKING stops them. The current strategy is read from the stats
-// poll (single source of truth on the server), so the toggle reflects reality even if someone
-// flipped it via the API.
-const SIM_PLAYERS = 1000;
-
-export default function ControlStrip({ strategy }) {
+// Drives the demo: start/stop the run and flip the matcher strategy. Presentational, the handlers
+// come from the parent so the same strip works in live mode (calls the admin API) and replay mode
+// (controls playback). The toggle is the money shot: flipping to NAIVE makes the race appear, then
+// LOCKING makes it stop. In replay, start/stop pause and resume playback instead.
+export default function ControlStrip({ strategy, playing, onStart, onStop, onStrategy, replay }) {
   const [busy, setBusy] = useState(false);
   const naive = strategy === 'naive';
 
@@ -26,25 +22,25 @@ export default function ControlStrip({ strategy }) {
 
   return (
     <div className="controls">
-      <button className="btn" disabled={busy} onClick={() => run(() => startSimulation(SIM_PLAYERS))}>
-        ▶ start sim
+      <button className="btn" disabled={busy || (replay && playing)} onClick={() => run(onStart)}>
+        ▶ {replay ? 'play' : 'start sim'}
       </button>
-      <button className="btn" disabled={busy} onClick={() => run(() => stopSimulation())}>
-        ■ stop sim
+      <button className="btn" disabled={busy || (replay && !playing)} onClick={() => run(onStop)}>
+        ■ {replay ? 'pause' : 'stop sim'}
       </button>
 
       <div className="toggle" role="group" aria-label="matcher strategy">
         <button
           className={`toggle-btn ${!naive ? 'active ok' : ''}`}
           disabled={busy}
-          onClick={() => run(() => setStrategy('locking'))}
+          onClick={() => run(() => onStrategy('locking'))}
         >
           LOCKING
         </button>
         <button
           className={`toggle-btn ${naive ? 'active warn' : ''}`}
           disabled={busy}
-          onClick={() => run(() => setStrategy('naive'))}
+          onClick={() => run(() => onStrategy('naive'))}
         >
           NAIVE
         </button>

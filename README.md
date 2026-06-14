@@ -2,9 +2,11 @@
 
 A concurrent matchmaking backend that pairs ranked players at scale without ever double-booking one, and proves it. The headline is a race condition: run several matcher instances against one queue the naive way and the same player gets pulled into two matches at once. The fix is one SQL clause, and the dashboard lets you watch the bug appear and disappear live.
 
+**[Live demo →](https://abhilashk2001.github.io/elo-arena-matchmaker/)** — flip the LOCKING/NAIVE toggle and watch the race appear and vanish.
+
 ![Dashboard demo: flipping the matcher from LOCKING to NAIVE under load makes red double-match rows appear, then flipping back stops them](docs/demo.gif)
 
-> The GIF shows the matcher strategy being flipped from LOCKING to NAIVE under ~1k players of simulated load. Red anomaly rows appear within seconds and the anomaly counter climbs; flipping back to LOCKING stops them.
+> The live demo replays two real captured runs of the system (a clean LOCKING run and a NAIVE run), so it is always on and costs nothing to host. It is a recording of the real thing, not synthetic data: the system that produced it is this repo, one `docker compose up` away, with the benchmark suite that produced the numbers below. Flip the toggle and red anomaly rows appear within seconds while the counter climbs; flip back to LOCKING and it returns to zero.
 
 ## What this is
 
