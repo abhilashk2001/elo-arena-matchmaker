@@ -479,3 +479,63 @@ the thing you are scaling is actually the bottleneck and not starved for input.
 3. Why is a bigger connection pool not automatically better? What did sweeping pool sizes reveal about the sweet spot?
 4. Did three matchers triple pairing throughput? Give the measured factor and explain the gap.
 5. What is coordinated omission, and why does a closed-loop simulator make a stalled system look healthier than it is?
+
+---
+
+## Phase 8: Dashboard
+
+### Poll-friendly read endpoints, and the budget that keeps them honest
+
+The dashboard is a set of small panels that each re-fetch on a timer: the stats strip every second,
+the queue, match feed, and leaderboard every two. Multiply that by every open tab and these endpoints
+are some of the most frequently hit in the system, so each one carries an explicit budget: under 50ms
+at 10k players. A budget you do not measure is a wish, so the budget shapes the implementation rather
+than decorating it. Three things follow from it. First, every read is bounded: the queue and match
+feed are top-N queries (LIMIT 25 and 30), never "select all waiting" or "all matches", so latency does
+not grow with the queue depth or the size of the matches table. Second, the reads run against indexes,
+not scans: the queue read leans on the partial index on (enqueued_at) WHERE status='WAITING' so it
+walks waiting rows in wait order and stops after N, and the match feed reads the primary-key index
+backwards (ORDER BY id DESC LIMIT 30). Third, the cheapest source wins: the stats strip is assembled
+from Redis counters and in-memory Micrometer snapshots and touches Postgres for exactly one count, so
+the most-polled endpoint is also the lightest. The leaderboard top-20 comes from the Redis sorted set,
+not a Postgres ORDER BY, for the same reason. The budget is verified, not assumed: an integration test
+asserts the median read stays under 50ms on representative data, and a load script
+(`scripts/dashboard-latency-benchmark.sh`) measures p50/p99 against a live 10k-player system.
+
+### Compute display values on the server so the rule lives in one place
+
+The queue panel draws a bar for each player's current rating band, the window of opponents they will
+accept, which widens the longer they wait. The tempting move is to send the raw enqueue time and the
+band parameters to the browser and let the UI compute the band. That would be a second copy of the
+band-expansion formula, and the day someone tweaks the expansion rate on the server, the bars would
+quietly lie until the frontend was changed to match. So `currentBand` is computed on the server, by the
+exact same `BandPolicy` the matcher pairs on, and the UI renders the number as-is. The formula has one
+home, and the bar a player sees is provably the window the matcher is using for them. The general
+principle: any value that encodes a business rule (a band, a tier, a score, an eligibility flag) should
+be computed where the rule lives and shipped ready to render, not recomputed in the client. The UI
+stays a thin renderer, which is also what keeps the meaningful tests at the API seam instead of in
+React.
+
+### Cheap real-time without websockets
+
+"Real-time dashboard" sounds like it needs websockets or server-sent events, a push channel, a
+connection to manage, reconnection logic, backpressure. For this view none of that is warranted, and
+recognising when the simpler tool is enough is the lesson. The data is a snapshot, the queue right now,
+the latest matches, the current standings. A dropped or slightly late frame changes nothing, there is
+no event you must not miss, just the most recent state. So the whole "real-time" mechanism is a timer
+per panel that re-fetches and replaces. Two small touches make polling feel live between fetches
+without lying about the data: a shared one-second clock advances the wait timers locally (cosmetic, not
+a decision), and the band bar animates toward each new server value with a CSS width transition instead
+of recomputing the band. The rank-change highlight is the same idea applied to standings, diff the new
+top-20 against the previous snapshot and flash the rows that moved, no animation library, just compare
+two arrays. Push has real uses (chat, collaborative editing, anything where missing an event is a bug),
+but reaching for it here would be cost without benefit. Polling cheap, bounded endpoints is the right
+size of solution, which is why the endpoints were built cheap and bounded in the first place.
+
+---
+
+## Checkpoint questions: Phase 8
+
+1. The dashboard polls a handful of endpoints every one to two seconds from every open tab. What is the per-endpoint latency budget, what three implementation choices keep each read inside it, and how is the budget verified rather than assumed?
+2. Why is the rating band (`currentBand`) computed on the server and sent ready to render, instead of computing it in the browser from the raw enqueue time? What bug does that prevent?
+3. This is a "real-time" dashboard with no websockets. Why is polling the right size of solution here, and when would it not be?

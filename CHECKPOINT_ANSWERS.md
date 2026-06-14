@@ -258,3 +258,46 @@ relative comparisons (default vs tuned pool, naive vs locking) are trusted while
 millisecond tails are treated as best-case. The honest fixes are to keep offered load independent of
 response time, or to measure from when a request *should* have started rather than when it actually
 did; the minimum is to name the bias so nobody reads the numbers as worst-case truth.
+
+## Phase 8: Dashboard
+
+**Q1. What is the per-endpoint latency budget, what three choices keep each read inside it, and how is the budget verified?**
+
+The budget is under 50ms per dashboard endpoint at 10k players. Three choices keep the reads there.
+First, every read is bounded: the queue and match feed are top-N queries (LIMIT 25 and 30), so latency
+does not grow with how deep the queue is or how many matches have ever been played. Second, every read
+hits an index instead of scanning: the queue read uses the partial index on (enqueued_at) WHERE
+status='WAITING', so it walks waiting rows in wait order and stops after N rather than sorting the whole
+set, and the match feed reads the primary-key index backwards (ORDER BY id DESC LIMIT 30). Third, the
+most-polled endpoint uses the cheapest source: the stats strip is built from Redis counters
+(queue depth, a sliding-window matches/sec) and in-memory Micrometer snapshots (avg wait, p99 pairing),
+and touches Postgres only for one anomaly COUNT; the leaderboard top-20 comes from the Redis sorted set,
+not a Postgres ORDER BY. It is verified two ways, not assumed: an integration test asserts the median
+read stays under 50ms on representative data (200 players, 100 queued, 500 matches), and
+`scripts/dashboard-latency-benchmark.sh` measures p50/p99 of each endpoint against a live 10k-player
+system under simulator load.
+
+**Q2. Why compute currentBand on the server instead of in the browser? What bug does it prevent?**
+
+Because the band-expansion rule is a piece of business logic, and a value that encodes a rule should be
+computed where the rule lives. The band is the rating window a waiting player will accept; it starts at
+a base and widens with wait time, and the matcher pairs on it. If the browser recomputed the band from
+the raw enqueue time and the band parameters, there would be two copies of that formula. The day the
+expansion rate is changed on the server, the matcher would pair on the new rule while the dashboard
+bars kept drawing the old one, so the UI would silently lie about the window the matcher is actually
+using. Computing currentBand on the server with the same BandPolicy the matcher uses means the formula
+has exactly one home and the bar a player sees is provably the window being applied to them. It also
+keeps the UI a thin renderer, which is why the meaningful tests sit at the API seam, not in React.
+
+**Q3. It is a real-time dashboard with no websockets. Why is polling the right size here, and when would it not be?**
+
+Because the data is a snapshot, not a stream of events. The dashboard shows the queue right now, the
+latest matches, the current standings; a dropped or slightly late frame changes nothing because there
+is no individual event you must not miss, only the most recent state. So the whole real-time mechanism
+is a timer per panel that re-fetches and replaces (stats every 1s; queue, feed, leaderboard every 2s),
+backed by endpoints that are cheap and bounded precisely so frequent polling is safe. Two small touches
+make it feel live between fetches without misrepresenting the data: a shared one-second clock advances
+the wait timers locally, and the band bar animates toward each new server value with a CSS transition.
+Polling would be the wrong tool when missing an event is itself a bug or when updates must be immediate:
+chat, collaborative editing, presence, live trading. There, the cost of a push channel (a managed
+connection, reconnection, backpressure) buys something real. Here it would be cost without benefit.
