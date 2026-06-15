@@ -62,7 +62,7 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 		<!-- OpenAPI 3 docs + Swagger UI at /swagger-ui.html. Lets a reader browse and try the
-		     API on a clean boot without external tooling; part of the §11 acceptance. -->
+		     API on a clean boot without external tooling; part of the clean-boot acceptance. -->
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

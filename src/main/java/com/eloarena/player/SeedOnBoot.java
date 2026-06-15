@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Seeds players once on first boot so that `docker compose up` on a clean machine yields a working,
- * populated system with no extra steps (the §11 acceptance bar). Off by default; the compose app
+ * populated system with no extra steps (the clean-boot acceptance bar). Off by default; the compose app
  * service turns it on with ELOARENA_SEED_ON_BOOT_ENABLED=true.
  *
  * It is idempotent across restarts: it seeds only when the players table is empty, so a restart
